@@ -796,7 +796,7 @@
 		interrupt-names = "silabs_fm_int", "silabs_fm_status_int";
 	};
 };
-
+/*
 &spi_0 {
 	ethernet@2 {
 		compatible = "micrel,ks8851";
@@ -808,7 +808,7 @@
 		reset-gpios = <&tlmm 79 0>;
 	};
 };
-
+*/
 &wil6210 {
 	status = "ok";
 };

@@ -55,7 +55,7 @@
 &spi_10 {
 	status = "ok";
 };
-
+/*
 &spi_0 {
 	spi_codec@0 {
 		compatible = "qcom,spi-msm-codec-slave";
@@ -64,7 +64,7 @@
 		spi-cpha;
 	};
 };
-
+*/
 &uartblsp2dm1 {
 	status = "ok";
 	pinctrl-names = "default";

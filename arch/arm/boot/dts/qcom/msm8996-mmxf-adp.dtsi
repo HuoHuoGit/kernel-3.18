@@ -867,6 +867,7 @@
 	/delete-property/ qcom,spkr-sd-n-gpio;
 };
 
+/*
 &spi_0 {
 	spi_codec@0 {
 		compatible = "qcom,spi-msm-codec-slave";
@@ -874,4 +875,4 @@
 		spi-max-frequency = <2000000>;
 		spi-cpha;
 	};
-};
+};*/

@@ -931,7 +931,7 @@
 		drive-strength = <8>; /* 8 MA */
 	};
 };
-
+/*
 &spi_0 {
 	spi_codec@0 {
 		compatible = "qcom,spi-msm-codec-slave";
@@ -940,3 +940,5 @@
 		spi-cpha;
 	};
 };
+*/
+

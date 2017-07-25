@@ -751,6 +751,34 @@
 			};
 		};
 
+		i2c_1 {
+			i2c_1_active: i2c_1_active {
+				mux {
+					pins = "gpio2", "gpio3";
+					function = "blsp_i2c1";
+				};
+
+				config {
+					pins = "gpio2", "gpio3";
+					drive-strength = <2>;
+					bias-disable;
+				};
+			};
+
+			i2c_1_sleep: i2c_1_sleep {
+				mux {
+					pins = "gpio2", "gpio3";
+					function = "blsp_i2c1";
+				};
+
+				config {
+					pins = "gpio2", "gpio3";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+			};
+		};
+
 		i2c_6 {
 			i2c_6_active: i2c_6_active {
 				mux {
@@ -974,7 +1002,7 @@
 				};
 			};
 		};
-
+/*
 		spi_0 {
 			spi_0_active: spi_0_active {
 				mux {
@@ -1034,7 +1062,7 @@
 				};
 			};
 		};
-
+*/
 		spi_9 {
 			spi_9_active: spi_9_active {
 				mux {
