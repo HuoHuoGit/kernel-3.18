@@ -553,6 +553,51 @@
 		/delete-property/ vdd-wlan-core-supply;
 	};
 
+	i2c@7575000 {
+		bq25970@66 {
+			compatible = "ti,bq25970-charger";
+			reg = <0x66>;
+			interrupt-parent = <&tlmm>;
+			interrupts = <1 2>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&bq_int_default>;
+
+		/*	ti,bq2597x,bat-ovp-disable;	*/
+			ti,bq2597x,bat-ovp-alarm-disable;	
+		/*	ti,bq2597x,bat-ocp-disable;	
+			ti,bq2597x,bat-ocp-alarm-disable; */
+			
+		/*	ti,bq2597x,bat-ucp-disable;	*/
+
+		/*	ti,bq2597x,bus-ovp-alarm-disable;	
+			ti,bq2597x,bus-ocp-disable;	
+			ti,bq2597x,bus-ocp-alarm-disable;	
+
+			
+			ti,bq2597x,bat-therm-disable;	
+			ti,bq2597x,bus-therm-disable;	
+			ti,bq2597x,die-therm-disable;	
+		*/
+			ti,bq2597x,bat-ovp-threshold = <4350>;
+			ti,bq2597x,bat-ovp-alarm-threshold = <4200>;
+			ti,bq2597x,bat-ocp-threshold = <8100>;
+			ti,bq2597x,bat-ocp-alarm-threshold = <8000>;
+
+			ti,bq2597x,bus-ovp-threshold = <8900>;
+			ti,bq2597x,bus-ovp-alarm-threshold = <8800>;
+			ti,bq2597x,bus-ocp-threshold = <4250>;
+			ti,bq2597x,bus-ocp-alarm-threshold = <4000>;
+
+			ti,bq2597x,bat-ucp-alarm-threshold = <2000>;
+
+			ti,bq2597x,bat-therm-threshold = <0x15>;/*4.1%*/
+			ti,bq2597x,bus-therm-threshold = <0x15>;/*4.1%*/
+			ti,bq2597x,die-therm-threshold = <125>;
+
+			ti,bq2597x,ac-ovp-threshold = <11>;
+		};
+	};
+
 	i2c@75ba000 {
 		synaptics@20 {
 			compatible = "synaptics,dsx";

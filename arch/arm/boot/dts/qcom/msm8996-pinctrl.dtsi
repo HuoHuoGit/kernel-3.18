@@ -862,6 +862,17 @@
 				};
 			};
 		};
+			bq_int_default: bq_int_default {
+				muex {
+					pins = "gpio1";
+					function = "gpio";
+				};
+				config {
+					pins = "gpio1";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+			};
 
 		pmx_fm_int {
 			fm_int_active: fm_int_active {

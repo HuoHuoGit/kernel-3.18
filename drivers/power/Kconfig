@@ -616,6 +616,16 @@ config MSM_BCL_PERIPHERAL_CTL
 	  provides routines to configure and monitor the BCL
 	  PMIC peripheral.
 
+
+config CHARGER_BQ2597X
+	tristate "TI BQ2597x battery charger driver"
+	depends on I2C
+	default y
+	help
+	  Say Y to enable support for the TI BQ2415x battery charger
+	  PMICs.
+
+
 source "drivers/power/reset/Kconfig"
 
 endif # POWER_SUPPLY
