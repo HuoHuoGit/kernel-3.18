@@ -83,3 +83,4 @@ obj-$(CONFIG_POWER_RESET)	+= reset/
 obj-$(CONFIG_ARCH_MSM)		+= qcom/
 
 obj-$(CONFIG_CHARGER_BQ2597X)	+= bq2597x_charger.o
+obj-y				+= tusb422_linux_v1.00/

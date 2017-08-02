@@ -1,0 +1,9 @@
+config TUSB422
+	bool "Enable TUSB422 USB Power Delivery"
+	default y
+
+config TUSB422_PAL
+	bool "Enable TUSB422 Platform Abstraction Layer"
+	default y
+	depends on TUSB422
+
