@@ -4,6 +4,6 @@ config TUSB422
 
 config TUSB422_PAL
 	bool "Enable TUSB422 Platform Abstraction Layer"
-	default y
+	default n
 	depends on TUSB422
 

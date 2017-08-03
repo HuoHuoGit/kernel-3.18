@@ -596,6 +596,110 @@
 
 			ti,bq2597x,ac-ovp-threshold = <11>;
 		};
+
+
+		usb_power_dev: usb_power_dev@20 {
+			compatible = "ti,tusb422-usb-pd";
+			reg = <0x20>;
+			/* Config for TUSB422 EVM GPIOs */
+/*			interrupt-parent = <&tlmm>;
+			interrupts = <84 2>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&tusb422_int_default>;
+*/
+
+			ti,alert-gpio = <84>;
+/*
+			ti,alert-gpio = <&gpio1 16 GPIO_ACTIVE_HIGH>;
+			ti,vbus-snk-gpio = <&gpio1 28 GPIO_ACTIVE_HIGH>;
+			ti,vbus-src-gpio = <&gpio3 21 GPIO_ACTIVE_HIGH>;
+			ti,vconn-en-gpio = <&gpio3 19 GPIO_ACTIVE_HIGH>;
+			ti,vbus-hv-gpio = <&gpio1 17 GPIO_ACTIVE_HIGH>;
+			ti,vbus-5v-gpio = <&gpio0 7 GPIO_ACTIVE_HIGH>;
+*/
+			/* Port Config */
+			/*ti,usb-comm-capable;*/
+			ti,no-usb-suspend;
+			ti,externally-powered;
+			/* Uncomment the below tags to make them true for the driver
+			 * otherwise they are false */
+			/* ti,usb-suspend-supported;
+			ti,externally-powered;
+			ti,dual-role-data;
+			ti,higher-capability;
+			ti,giveback-flag; */
+			/*ti,auto-accept-swap-to-dfp;*/
+			ti,auto-accept-swap-to-ufp;
+			/*ti,auto-accept-swap-to-source;*/
+			ti,auto-accept-swap-to-sink;
+			/*ti,auto-accept-vconn-swap;*/
+
+			ti,src-settling-time-ms = <50>;
+			ti,fast-role-swap-support = <0>;
+			ti,pdo-priority = <0>;
+			ti,role = <1>;    /* 0 = SRC, 1 = SNK, 2 = DRP */
+			ti,rp-val = <2>;  /* 0 = default, 1 = 1.5A, 2 = 3.0A */
+			ti,flags = <2>;   /* 0 = none, 1 = Try.SRC, 2 = Try.SNK */
+
+			/* Config for VDM with DisplayPort Alt-Mode Host support */
+			/*ti,ufp-alt-mode-entry-timeout-enable;*/
+			/*ti,multi-function-preferred;*/
+			ti,id-header-vdo = <0xD5000451>; /* 0xD500xxxx = USB Host and Device communication capable and modal operation supported */ 
+			ti,cert-stat-vdo = <0x0>;
+			ti,product-vdo = <0x92610000>;
+			ti,num-product-type-vdos = <0>;
+			ti,product-type-vdo-1 = <0>;
+			ti,product-type-vdo-2 = <0>;
+			ti,product-type-vdo-3 = <0>;
+			ti,num-svids = <1>;
+			ti,svid-1 = <0xFF01>; /* 0xFF01 = DisplayPort. ENABLE_DP_ALT_MODE_SUPPORT must be defined in usb_pd_policy_engine.h to support this SVID */
+			ti,svid-2 = <0>;
+			ti,svid-3 = <0>;
+			ti,mode-1 = <0x1C46>; /* 0x1C46 = DFP_D, DP_v1.3, receptacle, USB 2 signaling may be required, DFP_D pin assignment C, D, E */
+			ti,mode-2 = <0>;
+			ti,mode-3 = <0>;
+
+			source@0 {
+				ti,current-flow = <0>; /* 0 for source, 1 for sink */
+				ti,supply-type = <0>;
+				ti,pdo-number = <0>;
+				ti,min-voltage = <5000>;
+				ti,max-voltage = <0>;
+				ti,peak-current = <0>;
+				ti,max-current = <3000>;
+				ti,max-power = <0>;
+			};
+
+			sink@0 {
+				ti,current-flow = <1>; /* 0 for source, 1 for sink */
+				ti,supply-type = <0>;
+				ti,pdo-number = <0>;
+				ti,min-voltage = <5000>;
+				ti,max-voltage = <0>;
+				ti,max-operating-curr = <2000>;
+				ti,min-operating-curr = <100>;
+				ti,operational-curr = <2000>;
+				ti,max-operating-pwr = <0>;
+				ti,min-operating-pwr = <0>;
+				ti,operational-pwr = <0>;
+				ti,peak-current = <0>;
+			};
+
+			sink@1 {
+				ti,current-flow = <1>; /* 0 for source, 1 for sink */
+				ti,supply-type = <0>;
+				ti,pdo-number = <1>;
+				ti,min-voltage = <9000>;
+				ti,max-voltage = <0>;
+				ti,max-operating-curr = <2000>;
+				ti,min-operating-curr = <100>;
+				ti,operational-curr = <2000>;
+				ti,max-operating-pwr = <0>;
+				ti,min-operating-pwr = <0>;
+				ti,operational-pwr = <0>;
+				ti,peak-current = <0>;
+			};
+		};
 	};
 
 	i2c@75ba000 {

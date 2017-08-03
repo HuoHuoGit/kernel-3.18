@@ -632,3 +632,4 @@ endif # POWER_SUPPLY
 
 source "drivers/power/avs/Kconfig"
 source "drivers/power/qcom/Kconfig"
+source "drivers/power/tusb422_linux_v1.00/Kconfig"

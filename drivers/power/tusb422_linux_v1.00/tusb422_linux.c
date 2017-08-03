@@ -14,7 +14,7 @@
  * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
+#define pr_fmt(fmt) "TUSB422 %s:" fmt, __func__
 #include "tusb422_linux.h"
 #include "tcpci.h"
 #include "tcpm.h"
@@ -80,7 +80,8 @@ struct tusb422_pwr_delivery {
 	struct i2c_client *client;
 	struct src_pdo_t *source_pwr;
 	struct snk_pdo_t *sink_pwr;
-	struct gpio_desc *alert_gpio;
+	int	alert_gpio;
+	//struct gpio_desc *alert_gpio;
 	struct gpio_desc *vbus_src_gpio;
 	struct gpio_desc *vbus_snk_gpio;
 	struct gpio_desc *vconn_gpio;
@@ -619,6 +620,16 @@ static irqreturn_t tusb422_irq_handler(int irq, void *data)
 
 static int tusb422_of_get_gpios(struct tusb422_pwr_delivery *tusb422_pd)
 {
+
+	struct device_node *of_node = tusb422_pd->dev->of_node;
+	int ret;
+	
+	ret = of_property_read_u32(of_node, "ti,alert-gpio", &tusb422_pd->alert_gpio);
+	if (ret) {
+		pr_err("failed to read alert_gpio\n");
+		return ret;
+	}
+#if 0
 	tusb422_pd->alert_gpio = devm_gpiod_get(tusb422_pd->dev, "ti,alert", GPIOD_IN);
 	if (IS_ERR(tusb422_pd->alert_gpio)) {
 		dev_err(tusb422_pd->dev, "failed to allocate alert gpio\n");
@@ -630,6 +641,7 @@ static int tusb422_of_get_gpios(struct tusb422_pwr_delivery *tusb422_pd)
 		dev_err(tusb422_pd->dev, "no IRQ resource found\n");
 		return tusb422_pd->alert_irq;
 	}
+#endif
 
 	/* The following GPIO are for the TUSB422 EVM only */
 	tusb422_pd->vbus_snk_gpio = devm_gpiod_get_optional(
@@ -1043,6 +1055,8 @@ static void tusb422_work(struct work_struct *work)
 {
 	struct tusb422_pwr_delivery *tusb422_pwr = container_of(work, struct tusb422_pwr_delivery, work);
 
+	pr_err("\n");
+
 	if (tusb422_pwr->alert_status)
 	{
 		tusb422_pwr->alert_status = 0;
@@ -1053,7 +1067,8 @@ static void tusb422_work(struct work_struct *work)
 			tcpm_connection_state_machine(0);
 			/* Run USB PD state machine */
 			usb_pd_pe_state_machine(0);
-		} while (!gpiod_get_raw_value(tusb422_pwr->alert_gpio));
+/*		} while (!gpiod_get_raw_value(tusb422_pwr->alert_gpio));*/
+		} while (!gpio_get_value(tusb422_pwr->alert_gpio));
 	}
 
 	if (tusb422_pwr->timer_expired) {
@@ -1205,17 +1220,26 @@ static int tusb422_probe(struct i2c_client *client, const struct i2c_device_id *
 		goto err_sysfs;
 	}
 #endif
-
-	ret = devm_request_irq(dev,
+	if (gpio_is_valid(tusb422_pd->alert_gpio)) {
+		ret = devm_gpio_request(tusb422_pd->dev, tusb422_pd->alert_gpio, "alert-gpio");
+		if (ret) {
+			pr_err("Failed to request alert-gpio\n");
+			goto err_sysfs;
+		}
+		tusb422_pd->alert_irq = gpio_to_irq(tusb422_pd->alert_gpio);
+	}
+	if (tusb422_pd->alert_irq) {
+		ret = devm_request_irq(dev,
 						   tusb422_pd->alert_irq,
 						   tusb422_irq_handler,
 						   IRQF_TRIGGER_FALLING | IRQF_NO_THREAD | IRQF_NO_SUSPEND, 
 						   "tusb422_pd", 
 						   tusb422_pd);
 
-	if (ret) {
-		dev_err(dev, "unable to request IRQ\n");
-		goto err_irq;
+		if (ret) {
+			dev_err(dev, "unable to request IRQ\n");
+			goto err_irq;
+		}
 	}
 
 	enable_irq_wake(tusb422_pd->alert_irq);
@@ -1230,6 +1254,8 @@ static int tusb422_probe(struct i2c_client *client, const struct i2c_device_id *
 	tusb422_schedule_work(&tusb422_pd->work);
 #endif
 #endif
+
+	pr_err("tusb422 probe successfully!\n");
 
 	return 0;
 
