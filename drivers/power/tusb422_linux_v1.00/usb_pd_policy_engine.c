@@ -84,6 +84,7 @@
 #define T_SINK_TX_MS                  16   /* 16 - 20 ms */
 
 #define T_VBUS_5V_STABLIZE_MS         20   /* delay for VBUS to stablize after vSafe5V-min is reached */
+#define T_PPS_REQUEST_MS	     500   /* unit ms */
 
 #ifdef ENABLE_VDM_SUPPORT
 #define T_DISCOVER_IDENTITY_MS        45   /* 40 - 50 ms */
@@ -115,7 +116,7 @@ extern void build_rdo(unsigned int port);
 extern uint32_t get_data_object(uint8_t *obj_data);
 extern void build_src_caps(unsigned int port);
 extern void build_snk_caps(unsigned int port);
-
+extern void usb_pd_pm_evaluate_pps_status(unsigned int port);
 
 #ifdef ENABLE_VDM_SUPPORT
 static void usb_pd_pe_vdm_handler(usb_pd_port_t *dev);
@@ -898,11 +899,37 @@ static void usb_pd_pe_ctrl_msg_rx_handler(usb_pd_port_t *dev)
 	return;
 }
 
+
+
+static void usb_pd_pe_ext_data_msg_rx_handler(usb_pd_port_t *dev)
+{
+	switch (dev->rx_msg_type) {
+	
+	case EXT_MSG_TYPE_STATUS:
+		break;
+	case EXT_MSG_TYPE_PPS_STATUS:
+		if (*dev->current_state == PE_SNK_GET_PPS_STATUS) {
+			timer_cancel(&dev->timer);
+			/* notify policy manager of the info*/	
+			usb_pd_pm_evalute_pps_status(dev->port);
+			pe_set_state(dev, PE_SNK_READY);
+		}
+		break;
+	default:
+		usb_pd_pd_unhandled_rx_msg(dev);
+		break;
+	}
+
+}
+
 #define BIST_CARRIER_MODE_REQUEST  5
 #define BIST_TEST_DATA             8
 
 static void usb_pd_pe_data_msg_rx_handler(usb_pd_port_t *dev)
 {
+	if (dev->extended_msg) 
+		return usb_pd_pe_ext_data_msg_rx_handler(dev);
+
 	switch (dev->rx_msg_type)
 	{
 		case DATA_MSG_TYPE_SRC_CAPS:
@@ -2711,7 +2738,8 @@ static void timeout_sender_response(unsigned int port)
 	{
 		pe_set_state(dev, PE_SRC_HARD_RESET);
 	}
-	else if (*dev->current_state == PE_SRC_GET_SINK_CAP)
+	else if (*dev->current_state == PE_SRC_GET_SINK_CAP ||
+		 *dev->current_state == PE_SRC_GET_PPS_STATUS)
 	{
 		pe_set_state(dev, PE_SRC_READY);
 	}
@@ -3942,6 +3970,12 @@ static void pe_snk_get_source_cap_entry(usb_pd_port_t *dev)
 	return;
 }
 
+static void pe_snk_get_pps_status_entry(usb_pd_port_t *dev)
+{
+	usb_pd_prl_tx_ctrl_msg(dev->port, buf, CTRL_MSG_TYPE_GET_PPS_STATUS, TCPC_TX_SOP);
+	return;
+}
+
 static void timeout_bist_cont_mode(unsigned int port)
 {
 	usb_pd_port_t *dev = &pd[port];
@@ -4073,6 +4107,7 @@ static const state_entry_fptr pe_state_entry[PE_NUM_STATES] =
 	pe_dummy_state_entry,                 /* PE_SNK_GET_SOURCE_CAP_EXT     */
 	pe_dummy_state_entry,                 /* PE_SNK_GET_SOURCE_STATUS      */
 	pe_dummy_state_entry,                 /* PE_SNK_GIVE_SINK_STATUS       */
+	pe_snk_get_pps_status_entry,	      /* PE_SNK_GET_PPS_STATUS */
 
 	pe_dr_src_give_sink_caps_entry,       /* PE_DR_SRC_GIVE_SINK_CAP       */
 	pe_dr_snk_give_source_caps_entry,     /* PE_DR_SNK_GIVE_SOURCE_CAP     */
@@ -4252,6 +4287,7 @@ void usb_pd_pe_notify(unsigned int port, usb_pd_prl_alert_t prl_alert)
 				case PE_SNK_SEND_SOFT_RESET:
 				case PE_SRC_SEND_SOFT_RESET:
 				case PE_SNK_SELECT_CAPABILITY:
+				case PE_SNK_GET_PPS_STATUS:
 					dev->non_interruptable_ams = true;
 					timer_start(&dev->timer, T_SENDER_RESPONSE_MS, timeout_sender_response);
 					break;
@@ -4539,6 +4575,14 @@ int usb_pd_policy_manager_request(unsigned int port, pd_policy_manager_request_t
 		else if (req == PD_POLICY_MNGR_REQ_HARD_RESET)
 		{
 			pe_set_state(dev, PE_SNK_HARD_RESET);
+		}
+		else if (req == PD_POLICY_MNGR_REQ_SEL_CAPABILITY)
+		{
+			pe_set_state(dev, PE_SNK_SELECT_CAPABILITY);
+		}
+		else if (req == PD_POLICY_MNGR_REQ_GET_PPS_STATUS)
+		{
+			pe_set_state(dev, PE_SNK_GET_PPS_STATUS);
 		}
 		else
 		{

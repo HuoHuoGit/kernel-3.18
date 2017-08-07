@@ -126,6 +126,7 @@ enum supply_type_t
 	SUPPLY_TYPE_FIXED    = 0,
 	SUPPLY_TYPE_BATTERY  = 1,  
 	SUPPLY_TYPE_VARIABLE = 2, 
+	SUPPLY_TYPE_AUGMENTED = 3, 
 };
 
 enum peak_current_t

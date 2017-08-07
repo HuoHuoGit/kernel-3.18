@@ -44,7 +44,8 @@
 #define PD_REV20 0x01  /* Rev 2.0 */
 #define PD_REV30 0x02  /* Rev 3.0 */
 
-#define PD_SPEC_REV  PD_REV20
+/*#define PD_SPEC_REV  PD_REV20*/
+#define PD_SPEC_REV  PD_REV30
 
 #define PD_PWR_ROLE_SNK 0
 #define PD_PWR_ROLE_SRC 1
@@ -81,7 +82,8 @@ typedef enum
 	CTRL_MSG_TYPE_NOT_SUPPORTED   = 0x10, /* PD v3.0 */
 	CTRL_MSG_TYPE_GET_SRC_CAP_EXT = 0x11, /* PD v3.0 - SOP only */
 	CTRL_MSG_TYPE_GET_STATUS      = 0x12, /* PD v3.0 - SOP only */
-	CTRL_MSG_TYPE_FR_SWAP         = 0x13  /* PD v3.0 - SOP only */
+	CTRL_MSG_TYPE_FR_SWAP         = 0x13, /* PD v3.0 - SOP only */
+	CTRL_MSG_TYPE_GET_PPS_STATUS  = 0x14, /* PD v3.0 - SOP only */
 } msg_hdr_ctrl_msg_type_t;
 
 /* Data msg when number of data objects is non-zero */
@@ -108,7 +110,8 @@ typedef enum
 	EXT_MSG_TYPE_SECURITY_REQUEST   = 0x08,
 	EXT_MSG_TYPE_SECURITY_RESPONSE  = 0x09,
 	EXT_MSG_TYPE_FW_UPDATE_REQUEST  = 0x0A,
-	EXT_MSG_TYPE_FW_UPDATE_RESPONSE = 0x0B
+	EXT_MSG_TYPE_FW_UPDATE_RESPONSE = 0x0B,
+	EXT_MSG_TYPE_PPS_STATUS		= 0x0C,
 } ext_msg_hdr_msg_type_t;
 
 
@@ -183,6 +186,7 @@ typedef enum
 #define USB_PD_HDR_GET_MSG_TYPE(header)  ((header) & 0x1F)
 #define USB_PD_HDR_GET_DATA_ROLE(header) (((header) >> 5) & 0x01)
 #define USB_PD_HDR_GET_SPEC_REV(header)  (((header) >> 6) & 0x03)
+#define USB_PD_HDR_IS_EXT_MSG(header)	 (((header) >> 15) & 0x01)
 
 #define USB_PD_VDM_HDR_GEN(svid, vdm_type, obj_pos, cmd_type, cmd) \
 	(((uint32_t)(svid) << 16) | ((uint32_t)(vdm_type) << 15) | ((STRUCTURED_VDM_VER) << 13) | ((obj_pos) << 8) | ((cmd_type) << 6) | (cmd))
@@ -200,6 +204,9 @@ typedef enum
 #define PDO_MIN_VOLTAGE(pdo)          (((pdo) >> 10) & 0x3FF) /* 50mV units */
 #define PDO_MAX_VOLTAGE(pdo)          (((pdo) >> 20) & 0x3FF) /* 50mV units */
 #define PDO_SUPPLY_TYPE(pdo)          ((pdo) >> 30)
+
+#define	APDO_MAX_VOLTAGE(pdo)		(((pdo) >> 17) & 0xFF)
+#define APDO_MIN_VOLTAGE(pdo)		(((pdo) >> 8) & 0xFF)
 
 #define RDO_OPERATIONAL_CURRENT_OR_POWER(rdo)     (((rdo) >> 10) & 0x3FF)
 #define RDO_MIN_OPERATIONAL_CURRENT_OR_POWER(rdo) ((rdo) & 0x3FF)

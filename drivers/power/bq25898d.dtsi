@@ -1,0 +1,58 @@
+
+        bq27426@55 {
+        	compatible = "ti,bq27426";
+        	reg = <0x55>;
+        	interrupt-parent = <&tlmm>;
+        	interrupts = <62 2>;
+            pinctrl-names = "default";
+            pinctrl-0 = <&bq_int_default>;
+
+            vdd-supply = <&pm8937_l16>;
+		}
+
+bq2589x_otg_supply: bq2589x@6B {
+            compatible = "ti,bq25601-charger";
+            reg = <0x6B>;
+            interrupt-parent = <&tlmm>;
+            interrupts = <61 2>;
+            pinctrl-names = "default";
+            pinctrl-0 = <&smb_int_default>;
+
+            regulator-name = "bq2589x_otg_vreg";
+            
+			ti,bq2589x,dpdm-switch-gpio = <141>;
+			
+			ti,bq2589x,enable-auto-dpdm;
+			ti,bq2589x,enable-termination;
+			ti,bq2589x,enable-ico;
+			ti,bq2589x,use-absolute-vindpm;
+			ti,bq2589x,enable-12v;
+			ti,bq2589x,enable-hvdcp;
+			//ti,bq2589x,enable-maxc;
+			
+			ti,bq2589x,charge-voltage = <4400>;
+			ti,bq2589x,charge-current = <2000>;
+
+            ti,bq2589x,precharge-current = <256>;
+            ti,bq2589x,termination-current = <60>;
+            ti,bq2589x,boost-voltage = <4998>;
+            ti,bq2589x,boost-current = <1200>;
+            ti,bq2589x,enable_term;
+
+            ti,bq2589x,jeita-hot-degc = <540>;
+            ti,bq2589x,jeita-warm-degc = <450>;
+            ti,bq2589x,jeita-cool-degc = <150>;
+            ti,bq2589x,jeita-cold-degc = <0>;
+
+            ti,bq2589x,jeita-hot-hysteresis = <10>;
+            ti,bq2589x,jeita-cold-hysteresis = <0>;
+
+            ti,bq2589x,jeita-cool-ma = <900>;
+            ti,bq2589x,jeita-cool-mv = <4400>;
+            ti,bq2589x,jeita-warm-ma = <900>;
+            ti,bq2589x,jeita-warm-mv = <4112>;
+
+            ti,bq2589x,software-jeita-supported;
+
+            ti,thermal-mitigation = <1000 800 600 0>;
+        };

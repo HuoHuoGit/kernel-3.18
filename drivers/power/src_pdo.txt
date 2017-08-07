@@ -1,0 +1,47 @@
+struct src_pdo_fixed {
+	uint32_t supply_type		:		2;
+	uint32_t drp				:		1;
+	uint32_t usb_suspend		:		1;
+	uint32_t unconstrained		:		1;
+	uint32_t usb_comm			:		1;
+	uint32_t drd				:		1;
+	uint32_t unchunked_ext		:		1;
+	uint32_t rsved				:		2;
+	uint32_t peak_curr			:		2;
+	uint32_t volt;				:		10;
+	uint32_t max_curr			:		10
+};
+
+struct src_pdo_battery {
+	uint32_t supply_type		:		2;
+	uint32_t max_volt			:		10;
+	uint32_t max_curr			:		10;
+	uint32_t max_power			:		10;
+};
+
+struct src_pdo_variable {
+	uint32_t supply_type		:		2;
+	uint32_t max_volt			:		10;
+	uint32_t max_curr			:		10;
+	uint32_t max_power			:		10;
+};
+
+struct src_pdo_pps {
+	uint32_t supply_type		:		2;
+	uint32_t pps_type			:		2;
+	uint32_t rsved1				:		3;
+	uint32_t max_volt			:		8;
+	uint32_t rsved2				:		1;
+	uint32_t min_volt			:		8;
+	uint32_t rsved3				:		1;
+	uint32_t max_curr			:		7;
+};
+
+union rx_src_pdo {
+	uint32_t pdo;
+	struct src_pdo_fixed fixed;
+	struct src_pdo_variable variable;
+	struct src_pdo_battery  battery;
+	struct src_pdo_pps		pps;
+};
+

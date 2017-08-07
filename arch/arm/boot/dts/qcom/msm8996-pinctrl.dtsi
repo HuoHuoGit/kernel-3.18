@@ -862,7 +862,7 @@
 				};
 			};
 		};
-			bq_int_default: bq_int_default {
+			bq2597x_int_default: bq2597x_int_default {
 				muex {
 					pins = "gpio1";
 					function = "gpio";
@@ -873,6 +873,19 @@
 					bias-pull-up;
 				};
 			};
+
+			bq2589x_int_default: bq2589x_int_default {
+				muex {
+					pins = "gpio0";
+					function = "gpio";
+				};
+				config {
+					pins = "gpio0";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+			};
+
 /*
 			tusb422_int_default: tusb422_int_default {
 				muex {

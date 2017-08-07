@@ -68,7 +68,8 @@ static const char * const ctrlmsg2string[]=
 	"NOT_SUPPORTED",		  /* 0x10 */
 	"GET_SRC_CAP_EXT",		  /* 0x11 */
 	"GET_STATUS",			  /* 0x12 */
-	"FR_SWAP"				  /* 0x13 */
+	"FR_SWAP",			  /* 0x13 */
+	"GET_PPS_STATUS"		  /* 0x14 */
 };
 
 static const char * const datamsg2string[]=
@@ -142,6 +143,7 @@ static void usb_pd_prl_receive_alert_handler(unsigned int port)
 	dev->rx_msg_type = USB_PD_HDR_GET_MSG_TYPE(hdr);
 	dev->rx_msg_data_len = USB_PD_HDR_GET_DATA_LEN(hdr);
 	dev->rx_msg_spec_rev = USB_PD_HDR_GET_SPEC_REV(hdr);
+	dev->extended_msg = USB_PD_HDR_IS_EXT_MSG(hdr);
 
 	if (sop == 0)
 	{
@@ -172,6 +174,23 @@ static void usb_pd_prl_receive_alert_handler(unsigned int port)
 		dev->stored_msg_id[sop] = MSG_ID_CLEARED;
 
 		usb_pd_pe_notify(port, PRL_ALERT_MSG_RECEIVED);
+	}
+	else if ((dev->rx_msg_data_len == 0) && dev->extended_msg &&
+		(dev->rx_msg_type == EXT_MSG_TYPE_PPS_STATUS)) {
+			msg_id = USB_PD_HDR_GET_MSG_ID(hdr);
+			INFO("MsgID: %u\n", msg_id);
+
+			dev->rx_msg_data_len = 6;
+			// Verify this is not a retry msg. 
+			if (msg_id != dev->stored_msg_id[sop])
+			{
+				// Store message ID.
+				dev->stored_msg_id[sop] = msg_id;
+
+				tcpm_read_message(port, pd[port].rx_msg_buf, dev->rx_msg_data_len);
+
+				usb_pd_pe_notify(port, PRL_ALERT_MSG_RECEIVED);
+			}
 	}
 	else
 	{

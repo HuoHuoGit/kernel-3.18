@@ -86,6 +86,42 @@ enum {
 #define	TS_BUS_FAULT		BIT(1)
 #define	TS_DIE_FAULT		BIT(0)
 
+/*below used for comm with other module*/
+#define	BAT_OVP_FAULT_SHIFT			0
+#define	BAT_OCP_FAULT_SHIFT			1
+#define	BUS_OVP_FAULT_SHIFT			2
+#define	BUS_OCP_FAULT_SHIFT			3
+#define	BAT_THERM_FAULT_SHIFT			4
+#define	BUS_THERM_FAULT_SHIFT			5
+#define	DIE_THERM_FAULT_SHIFT			6
+
+#define	BAT_OVP_FAULT_MASK		(1 << BAT_OVP_FAULT_SHIFT)
+#define	BAT_OCP_FAULT_MASK		(1 << BAT_OCP_FAULT_SHIFT)
+#define	BUS_OVP_FAULT_MASK		(1 << BUS_OVP_FAULT_SHIFT)
+#define	BUS_OCP_FAULT_MASK		(1 << BUS_OCP_FAULT_SHIFT)
+#define	BAT_THERM_FAULT_MASK		(1 << BAT_THERM_FAULT_SHIFT)
+#define	BUS_THERM_FAULT_MASK		(1 << BUS_THERM_FAULT_SHIFT)
+#define	DIE_THERM_FAULT_MASK		(1 << DIE_THERM_FAULT_SHIFT)
+
+#define	BAT_OVP_ALARM_SHIFT			0
+#define	BAT_OCP_ALARM_SHIFT			1
+#define	BUS_OVP_ALARM_SHIFT			2
+#define	BUS_OCP_ALARM_SHIFT			3
+#define	BAT_THERM_ALARM_SHIFT			4
+#define	BUS_THERM_ALARM_SHIFT			5
+#define	DIE_THERM_ALARM_SHIFT			6
+#define BAT_UCP_ALARM_SHIFT			7
+
+#define	BAT_OVP_ALARM_MASK		(1 << BAT_OVP_ALARM_SHIFT)
+#define	BAT_OCP_ALARM_MASK		(1 << BAT_OCP_ALARM_SHIFT)
+#define	BUS_OVP_ALARM_MASK		(1 << BUS_OVP_ALARM_SHIFT)
+#define	BUS_OCP_ALARM_MASK		(1 << BUS_OCP_ALARM_SHIFT)
+#define	BAT_THERM_ALARM_MASK		(1 << BAT_THERM_ALARM_SHIFT)
+#define	BUS_THERM_ALARM_MASK		(1 << BUS_THERM_ALARM_SHIFT)
+#define	DIE_THERM_ALARM_MASK		(1 << DIE_THERM_ALARM_SHIFT)
+#define	BAT_UCP_ALARM_MASK		(1 << BAT_UCP_ALARM_SHIFT)
+/*end*/
+
 struct bq2597x_cfg {
 	bool bat_ovp_disable;
 	bool bat_ocp_disable;
@@ -1318,9 +1354,21 @@ static int bq2597x_init_device(struct bq2597x *bq)
 static enum power_supply_property bq2597x_charger_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_CHARGING_ENABLED,
-	POWER_SUPPLY_PROP_VOLTAGE_NOW,
-	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_STATUS,
+
+	POWER_SUPPLY_PROP_TI_BATTERY_PRESENT,
+	POWER_SUPPLY_PROP_TI_VBUS_PRESENT,
+	POWER_SUPPLY_PROP_TI_BATTERY_VOLTAGE,
+	POWER_SUPPLY_PROP_TI_BATTERY_CURRENT,
+	POWER_SUPPLY_PROP_TI_BATTERY_TEMPERATURE, 
+	POWER_SUPPLY_PROP_TI_BUS_VOLTAGE,
+	POWER_SUPPLY_PROP_TI_BUS_CURRNET,
+	POWER_SUPPLY_PROP_TI_BUS_TEMPERATURE,
+	POWER_SUPPLY_PROP_TI_DIE_TEMPERATURE,
+	POWER_SUPPLY_PROP_TI_ALARM_STATUS,
+	POWER_SUPPLY_PROP_TI_FAULT_STATUS,
+
+
 };
 
 static int bq2597x_charger_get_property(struct power_supply *psy,
@@ -1344,18 +1392,59 @@ static int bq2597x_charger_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = bq->usb_present;
 		break;
-	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+	case POWER_SUPPLY_PROP_TI_BATTERY_PRESENT:
+		val->intval = bq->batt_present;
+		break;
+	case POWER_SUPPLY_PROP_TI_VBUS_PRESENT:
+		val->intval = bq->vbus_present;
+		break;
+	case POWER_SUPPLY_PROP_TI_BATTERY_VOLTAGE:
 		ret = bq2597x_get_adc_data(bq, ADC_VBAT, &result);
 		if (!ret)
 			bq->vbat_volt = result;
-		val->intval = bq->vbat_volt * 1000;
+
+		val->intval = bq->vbat_volt;
 		break;
-	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		ret = bq2597x_get_adc_data(bq, ADC_IBAT, &result);
-		if (!ret)
-			bq->ibat_curr = result;
-		val->intval = bq->ibat_curr * 1000;
+	case POWER_SUPPLY_PROP_TI_BATTERY_CURRENT:
+		val->intval = bq->ibat_curr;
 		break;
+	case POWER_SUPPLY_PROP_TI_BATTERY_TEMPERATURE:
+		val->intval = bq->bat_temp;
+		break;
+	case POWER_SUPPLY_PROP_TI_BUS_VOLTAGE:
+		val->intval = bq->vbus_volt;
+		break;
+	case POWER_SUPPLY_PROP_TI_BUS_CURRNET:
+		val->intval = bq->ibus_curr;
+		break;
+	case POWER_SUPPLY_PROP_TI_BUS_TEMPERATURE:
+		val->intval = bq->bus_temp;
+		break;
+	case POWER_SUPPLY_PROP_TI_DIE_TEMPERATURE:
+		val->intval = bq->die_temp;
+		break;
+	case POWER_SUPPLY_PROP_TI_ALARM_STATUS:
+		val->intval =	( (bq->bat_ovp_alarm << BAT_OVP_ALARM_SHIFT)
+				| (bq->bat_ocp_alarm << BAT_OCP_ALARM_SHIFT)
+				| (bq->bat_ucp_alarm << BAT_UCP_ALARM_SHIFT)
+				| (bq->bus_ovp_alarm << BUS_OVP_ALARM_SHIFT)
+				| (bq->bus_ocp_alarm << BUS_OCP_ALARM_SHIFT)
+				| (bq->bat_therm_alarm << BAT_THERM_ALARM_SHIFT)
+				| (bq->bus_therm_alarm << BUS_THERM_ALARM_SHIFT)
+				| (bq->die_therm_alarm << DIE_THERM_ALARM_SHIFT));
+		break;
+
+	case POWER_SUPPLY_PROP_TI_FAULT_STATUS:
+		val->intval =	( (bq->bat_ovp_fault << BAT_OVP_FAULT_SHIFT)
+				| (bq->bat_ocp_fault << BAT_OCP_FAULT_SHIFT)
+				| (bq->bus_ovp_fault << BUS_OVP_FAULT_SHIFT)
+				| (bq->bus_ocp_fault << BUS_OCP_FAULT_SHIFT)
+				| (bq->bat_therm_fault << BAT_THERM_FAULT_SHIFT)
+				| (bq->bus_therm_fault << BUS_THERM_FAULT_SHIFT)
+				| (bq->die_therm_fault << DIE_THERM_FAULT_SHIFT));
+		break;
+
+
 	default:
 		return -EINVAL;
 

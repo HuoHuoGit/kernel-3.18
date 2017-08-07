@@ -42,6 +42,9 @@
 #include "usb_pd_policy_engine.h"
 #include "usb_pd_protocol.h"
 #include "version.h"
+#include "usb_pd_policy_manager.h"
+#include <linux/power_supply.h>
+
 #ifdef CONFIG_TUSB422
 	#include <linux/string.h>
 #else
@@ -56,6 +59,7 @@
 #define PDO_DUAL_ROLE_DATA_BIT            ((uint32_t)0x01 << 25)
 #define SRC_PDO_UNCHUNKED_EXT_MSG_SUP_BIT ((uint32_t)0x01 << 24)
 
+static adapter_t adapter;
 
 static usb_pd_port_config_t pd_port_config[NUM_TCPC_DEVICES];  
 
@@ -101,6 +105,93 @@ typedef struct
 	uint16_t max_power;
 	bool cap_mismatch;
 } pdo_offer_t;
+
+
+static void bq2589x_update_status()
+{
+	int ret;
+	union power_supply_propval val = {0,};
+
+	if (!pm_state.sw_psy) {
+		pm_state.sw_psy = power_supply_get_by_name("bq2589x");
+		if (!pm_state.sw_psy) {
+			pr_err("sw_psy not found\n");
+			return;
+		}
+	}
+
+	ret = sw_psy->get_property(sw_psy, POWER_SUPPLY_PROP_CHARGE_ENABLED, &val);
+	if (!ret)
+		pm_state.bq2589x.charge_enabled = val.intval;
+
+
+}
+
+static void bq2597x_update_status()
+{
+	int ret;
+	union power_supply_propval val = {0,};
+
+	if (!pm_state.fc_psy) {
+		pm_state.fc_psy = power_supply_get_by_name("bq2597x");
+		if (!pm_state.fc_psy) {
+			pr_err("fc_psy not found\n");
+			return;
+		}
+	}
+
+	ret = fc_psy->get_property(fc_psy, POWER_SUPPLY_PROP_TI_BATTERY_VOLTAGE, &val);
+	if (!ret)
+		pm_state.bq2597x.vbat_volt = val.intval; 
+
+	ret = fc_psy->get_property(fc_psy, POWER_SUPPLY_PROP_TI_BATTERY_CURRENT, &val);
+	if (!ret)
+		pm_state.bq2597x.ibat_curr = val.intval; 
+
+	ret = fc_psy->get_property(fc_psy, POWER_SUPPLY_PROP_TI_BUS_VOLTAGE, &val);
+	if (!ret)
+		pm_state.bq2597x.vbus_volt = val.intval; 
+
+	ret = fc_psy->get_property(fc_psy, POWER_SUPPLY_PROP_TI_BUS_CURRENT, &val);
+	if (!ret)
+		pm_state.bq2597x.ibus_curr = val.intval; 
+
+	ret = fc_psy->get_property(fc_psy, POWER_SUPPLY_PROP_TI_BATTERY_PRESENT, &val);
+	if (!ret)
+		pm_state.bq2597x.batt_pres = val.intval;
+
+	ret = fc_psy->get_property(fc_psy, POWER_SUPPLY_PROP_TI_VBUS_PRESENT, &val);
+	if (!ret)
+		pm_state.bq2597x.batt_pres = val.intval;
+
+	ret = fc_psy->get_property(fc_psy, POWER_SUPPLY_PROP_CHARGE_ENABLED, &val);
+	if (!ret)
+		pm_state.bq2597x.charge_enabled = val.intval;
+	
+	ret = fc_psy->get_property(fc_psy, POWER_SUPPLY_PROP_TI_ALARM_STATUS, &val);
+	if (!ret) {
+		pm_state.bq2597x.bat_ovp_alarm = !!(val.intval & BAT_OVP_ALARM_MASK); 
+		pm_state.bq2597x.bat_ocp_alarm = !!(val.intval & BAT_OCP_ALARM_MASK); 
+		pm_state.bq2597x.bus_ovp_alarm = !!(val.intval & BUS_OVP_ALARM_MASK); 
+		pm_state.bq2597x.bus_ocp_alarm = !!(val.intval & BUS_OCP_ALARM_MASK); 
+		pm_state.bq2597x.bat_ucp_alarm = !!(val.intval & BAT_UCP_ALARM_MASK); 
+		pm_state.bq2597x.bat_therm_alarm = !!(val.intval & BAT_THERM_ALARM_MASK);
+		pm_state.bq2597x.bus_therm_alarm = !!(val.intval & BUS_THERM_ALARM_MASK);
+		pm_state.bq2597x.die_therm_alarm = !!(val.intval & DIE_THERM_ALARM_MASK);
+	}
+
+	ret = fc_psy->get_property(fc_psy, POWER_SUPPLY_PROP_TI_FAULT_STATUS, &val);
+	if (!ret) {
+		pm_state.bq2597x.bat_ovp_fault = !!(val.intval & BAT_OVP_FAULT_MASK); 
+		pm_state.bq2597x.bat_ocp_fault = !!(val.intval & BAT_OCP_FAULT_MASK); 
+		pm_state.bq2597x.bus_ovp_fault = !!(val.intval & BUS_OVP_FAULT_MASK); 
+		pm_state.bq2597x.bus_ocp_fault = !!(val.intval & BUS_OCP_FAULT_MASK); 
+		pm_state.bq2597x.bat_ucp_fault = !!(val.intval & BAT_UCP_FAULT_MASK); 
+		pm_state.bq2597x.bat_therm_fault = !!(val.intval & BAT_THERM_FAULT_MASK);
+		pm_state.bq2597x.bus_therm_fault = !!(val.intval & BUS_THERM_FAULT_MASK);
+		pm_state.bq2597x.die_therm_fault = !!(val.intval & DIE_THERM_FAULT_MASK);
+	}
+}
 
 //------------------------------------------------------------------------------------------
 // Returns true if the new_offer is better than the current_offer, else returns false.
@@ -172,11 +263,34 @@ static bool better_offer(pdo_offer_t *new_offer, pdo_offer_t *current_offer, pdo
 	return false;
 }
 
+static void usb_pd_pm_retrieve_src_pdo(unsigned int port)
+{
+	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
+	uint8_t *pdo_data = dev->rx_msg_buf;
+	uint32_t pdo;
+	int i;
+
+	dev->rx_src_pdo_num = dev->rx_msg_data_len >> 2;
+
+	for (i = 0; i < dev->rx_src_pdo_num; i++) {
+		pdo = get_data_object(&pdo_data[i << 2]);
+		INFO("PDO[%u] = 0x%08x\n", i , pdo);
+
+		dev->rx_src_pdo[i].pdo = pdo;
+		
+		if (src_pdo_idx == 0)
+		{
+			dev->remote_externally_powered = (pdo & PDO_EXTERNALLY_POWERED_BIT) ? true : false;
+			INFO("Remote SRC_CAPS externally powered bit is %s.\n", (dev->remote_externally_powered) ? "set" : "not set");
+		}
+	}
+
+}
+
 void usb_pd_pm_evaluate_src_caps(unsigned int port)
 {
 	usb_pd_port_config_t *config = usb_pd_pm_get_config(port);
 	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
-	uint8_t num_offered_pdos;
 	uint8_t snk_pdo_idx;
 	uint8_t src_pdo_idx;
 	uint8_t *pdo_data = dev->rx_msg_buf;
@@ -187,9 +301,6 @@ void usb_pd_pm_evaluate_src_caps(unsigned int port)
 	pdo_offer_t *selected_offer;
 	pdo_offer_t *new_offer;
 
-	// Divide the Rx'd msg length by 4 to get the number of source PDOs offered.
-	num_offered_pdos = dev->rx_msg_data_len >> 2;
-
 	// Initialize RDO object position to zero (invalid value).
 	dev->object_position = 0;
 
@@ -198,19 +309,11 @@ void usb_pd_pm_evaluate_src_caps(unsigned int port)
 	selected_offer = NULL;
 
 	// Evaluate each PDO offered in source caps.
-	for (src_pdo_idx = 0; src_pdo_idx < num_offered_pdos; src_pdo_idx++)
+	for (src_pdo_idx = 0; src_pdo_idx < dev->rx_src_pdo_num; src_pdo_idx++)
 	{
 		// Using get_data_object() instead of casting to 32-bit pointer 
 		// in case pdo_data pointer is not 4-byte aligned.
-		pdo = get_data_object(&pdo_data[src_pdo_idx << 2]);
-
-		INFO("PDO[%u] = 0x%08x\n", src_pdo_idx, pdo);
-
-		if (src_pdo_idx == 0)
-		{
-			dev->remote_externally_powered = (pdo & PDO_EXTERNALLY_POWERED_BIT) ? true : false;
-			INFO("Remote SRC_CAPS externally powered bit is %s.\n", (dev->remote_externally_powered) ? "set" : "not set");
-		}
+		pdo = dev->rx_src_pdo[src_pdo_idx].pdo;
 
 		// Extract the offer params from the source PDO.
 		new_offer->supply_type = (enum supply_type_t)PDO_SUPPLY_TYPE(pdo);
@@ -219,6 +322,11 @@ void usb_pd_pm_evaluate_src_caps(unsigned int port)
 		if (new_offer->supply_type == SUPPLY_TYPE_FIXED)
 		{
 			new_offer->max_voltage = new_offer->min_voltage;
+		}
+		else if (new_off->supply_type == SUPPLY_TYPE_AUGMENTED)
+		{
+			new_offer->max_voltage = APDO_MAX_VOLTAGE(pdo);
+			new_offer->min_voltage = APDO_MIN_VOLTAGE(pdo);
 		}
 		else
 		{
@@ -326,6 +434,41 @@ void usb_pd_pm_evaluate_src_caps(unsigned int port)
 	DEBUG("selected_snk_pdo_idx: %u\n", dev->selected_snk_pdo_idx);
 
 	return;
+}
+
+
+void usb_pd_pm_evaluate_pps_status(unsigned int port)
+{
+
+	u16 temp;
+	usb_pd_port_t *dev = usb_pd_get_device(port);
+
+	temp = dev->rx_msg_buf[3] << 8 | dev->rx_msg_buf[2];
+
+	adapter.volt = temp * 20;	/*to mV*/
+	adapter.current = (int)dev->rx_msg_buf[4] * 50; /*to mA*/
+	adapter.ptf = (dev->rx_msg_buf[5] & 0x06) >> 1;
+	adapter.omf = !!(dev->rx_msg_buf[5] & 0x08);
+
+	CRIT("Adapter volt:%u, current:%u\n", adapter.volt, adapter.current);
+}
+
+/*PD PPS mode */
+static void usb_pd_pm_switch_to_ardo(unsigned int port)
+{
+	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
+
+	pm_state.request_volt = bq2597x.vbat_volt * 2 + bq2597x.vbat_volt / 4;
+	pm_state.request_current = 3000;
+
+	dev->selected_pdo = dev->rx_src_pdo[dev->apdo_idx].pdo;
+	dev->object_position = dev->apdo_idx + 1;
+}
+
+/*Normal PD mode */
+static void usb_pd_pm_switch_to_rdo(unsigned int port)
+{
+
 }
 
 
@@ -458,21 +601,35 @@ void build_snk_caps(unsigned int port)
 		// SinkPDO(n)(19:10) = pMinimumVoltage(n).
 		dev->snk_pdo[n] |= ((uint32_t)(config->snk_caps[n].MinV) & 0x3FF) << 10;
 
-		if (config->snk_caps[n].SupplyType != SUPPLY_TYPE_FIXED)
+		if (config->snk_caps[n].SupplyType == SUPPLY_TYPE_BATTERY ||
+		    config->snk_caps[n].SupplyType == SUPPLY_TYPE_VARIABLE)
 		{
 			// SinkPDO(n)(29:20) = pMaximumVoltage(n).
 			dev->snk_pdo[n] |= ((uint32_t)(config->snk_caps[n].MaxV) & 0x3FF) << 20;
 		}
+		else if (config->snk_caps[n].SupplyType == SUPPLY_TYPE_AUGMENTED) 
+		{
+			dev->snk_pdo[n] |= (uint32_t)0x00 << 28; //PPS
+		}
+
+
 
 		if (config->snk_caps[n].SupplyType == SUPPLY_TYPE_BATTERY)
 		{
 			// SinkPDO(n)(9:0) = pOperationalPower(n).
 			dev->snk_pdo[n] |= ((uint32_t)(config->snk_caps[n].OperationalPower) & 0x3FF);
 		}
-		else /* Fixed or Variable */
+		else if (config->snk_caps[n].SupplyType == SUPPLY_TYPE_FIXED ||
+		    config->snk_caps[n].SupplyType == SUPPLY_TYPE_VARIABLE) /* Fixed or Variable */
 		{
 			// SinkPDO(n)(9:0) = pOperationalCurrent(n).
 			dev->snk_pdo[n] |= ((uint32_t)(config->snk_caps[n].OperationalCurrent) & 0x3FF);
+		}
+		else /*Augmented Programmable Power Supply*/
+		{
+			dev->snk_pdo[n] |= ((uint32_t)(config->snk_caps[n].MaxV & 0xFF) << 17);
+			dev->snk_pdo[n] |= ((uint32_t)(config->snk_caps[n].MinV & 0xFF) << 8);
+			dev->snk_pdo[n] |= ((uint32_t)(config->snk_caps[n].MaxOperatingCurrent & 0x7F) << 0);
 		}
 	}
 
@@ -545,7 +702,8 @@ void build_rdo(unsigned int port)
 			rdo |= config->snk_caps[dev->selected_snk_pdo_idx].MaxOperatingPower & 0x3FF;
 		}
 	}
-	else /* Fixed or Variable supply */
+	else if (PDO_SUPPLY_TYPE(dev->selected_pdo) == POWER_SUPPLY_TYPE_FIXED ||
+		PDO_SUPLLY_TYPE(dev->selected_pdo) == POWER_SUPPLY_TYPE_VARIABLE) /* Fixed or Variable supply */
 	{
 		if (PDO_MAX_CURRENT_OR_POWER(dev->selected_pdo) < config->snk_caps[dev->selected_snk_pdo_idx].MaxOperatingCurrent)
 		{
@@ -567,6 +725,11 @@ void build_rdo(unsigned int port)
 		{
 			rdo |= config->snk_caps[dev->selected_snk_pdo_idx].MaxOperatingCurrent & 0x3FF;
 		}
+	}
+	else
+	{
+		rdo |= ((uint32_t)pm_state.request_volt / 20) & 0x7FF) << 9;
+		rdo |= (pm_state.request_current / 50) & 0x7F;
 	}
 
 	dev->rdo = rdo;
@@ -600,6 +763,9 @@ void usb_pd_init(const usb_pd_port_config_t *port_config)
 	{
 		usb_pd_pe_init(port, &pd_port_config[port]);
 	}
+
+	pm_state.fc_psy = power_supply_get_by_name("bq2597x");
+	pm_state.sw_psy = power_supply_get_by_name("bq2589x");
 
 	return;
 }

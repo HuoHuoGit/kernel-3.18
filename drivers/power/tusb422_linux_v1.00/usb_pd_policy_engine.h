@@ -106,6 +106,7 @@ typedef enum
 	PE_SNK_GET_SOURCE_CAP_EXT,
 	PE_SNK_GET_SOURCE_STATUS,
 	PE_SNK_GIVE_SINK_STATUS,
+	PE_SNK_GET_PPS_STATUS,
 
 	/* Dual-Role */
 	PE_DR_SRC_GIVE_SINK_CAP,
@@ -206,6 +207,55 @@ typedef enum
 	NOTIFY_HPD_IRQ  = 3
 } hpd_notify_t;
 
+
+struct src_pdo_fixed {
+	uint32_t supply_type		:	2;
+	uint32_t drp			:	1;
+	uint32_t usb_suspend		:	1;
+	uint32_t unconstrained		:	1;
+	uint32_t usb_comm		:	1;
+	uint32_t drd			:	1;
+	uint32_t unchunked_ext		:	1;
+	uint32_t rsved			:	2;
+	uint32_t peak_curr		:	2;
+	uint32_t volt;			:	10;
+	uint32_t max_curr		:	10
+};
+
+struct src_pdo_battery {
+	uint32_t supply_type		:	2;
+	uint32_t max_volt		:	10;
+	uint32_t max_curr		:	10;
+	uint32_t max_power		:	10;
+};
+
+struct src_pdo_variable {
+	uint32_t supply_type		:	2;
+	uint32_t max_volt		:	10;
+	uint32_t max_curr		:	10;
+	uint32_t max_power		:	10;
+};
+
+struct src_pdo_pps {
+	uint32_t supply_type		:	2;
+	uint32_t pps_type		:	2;
+	uint32_t rsved1			:	3;
+	uint32_t max_volt		:	8;
+	uint32_t rsved2			:	1;
+	uint32_t min_volt		:	8;
+	uint32_t rsved3			:	1;
+	uint32_t max_curr		:	7;
+};
+
+union rx_src_pdo {
+	uint32_t pdo;
+	struct src_pdo_fixed	fixed;
+	struct src_pdo_variable variable;
+	struct src_pdo_battery  battery;
+	struct src_pdo_pps	pps;
+};
+
+
 //typedef enum
 //{
 //    // BQ - maybe these can be bool in struct below.
@@ -246,6 +296,7 @@ typedef struct
 	uint8_t             caps_cnt;
 	bool                vconn_source;
 
+	bool		    extended_msg;
 	bool                non_interruptable_ams;
 	bool                swap_source_start;
 	bool                start_src_no_response_timer;
@@ -259,6 +310,7 @@ typedef struct
 
 	uint8_t             object_position;  /* Range: 1 - 7 */
 	uint8_t             selected_snk_pdo_idx;
+	uint8_t		    apdo_idx;	/* if src has PPS support, it tracks PPS PDO index */
 	uint32_t            rdo;
 	uint32_t            selected_pdo;
 	uint32_t            prev_selected_pdo;
@@ -269,6 +321,9 @@ typedef struct
 
 	uint32_t            src_pdo[PD_MAX_PDO_NUM];
 	uint32_t            snk_pdo[PD_MAX_PDO_NUM];
+	
+	union rx_src_pdo    rx_src_pdo[8];
+	uint8_t		    rx_src_pdo_num;
 
 	uint16_t            cable_max_current_ma;
 	uint16_t            cable_max_voltage_mv; 
@@ -340,7 +395,10 @@ typedef enum
 	PD_POLICY_MNGR_REQ_PR_SWAP,
 	PD_POLICY_MNGR_REQ_DR_SWAP,
 	PD_POLICY_MNGR_REQ_VCONN_SWAP,
-	PD_POLICY_MNGR_REQ_HARD_RESET
+	PD_POLICY_MNGR_REQ_HARD_RESET,
+	PD_POLICY_MNGR_REQ_GET_PPS_STATUS,
+	PD_POLICY_MNGR_REQ_SEL_CAPABILITY,
+	
 } pd_policy_manager_request_t;
 
 #ifdef ENABLE_DP_ALT_MODE_SUPPORT
