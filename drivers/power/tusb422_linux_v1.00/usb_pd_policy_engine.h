@@ -218,8 +218,8 @@ struct src_pdo_fixed {
 	uint32_t unchunked_ext		:	1;
 	uint32_t rsved			:	2;
 	uint32_t peak_curr		:	2;
-	uint32_t volt;			:	10;
-	uint32_t max_curr		:	10
+	uint32_t volt			:	10;
+	uint32_t max_curr		:	10;
 };
 
 struct src_pdo_battery {

@@ -911,12 +911,12 @@ static void usb_pd_pe_ext_data_msg_rx_handler(usb_pd_port_t *dev)
 		if (*dev->current_state == PE_SNK_GET_PPS_STATUS) {
 			timer_cancel(&dev->timer);
 			/* notify policy manager of the info*/	
-			usb_pd_pm_evalute_pps_status(dev->port);
+			usb_pd_pm_evaluate_pps_status(dev->port);
 			pe_set_state(dev, PE_SNK_READY);
 		}
 		break;
 	default:
-		usb_pd_pd_unhandled_rx_msg(dev);
+		usb_pd_pe_unhandled_rx_msg(dev);
 		break;
 	}
 
@@ -2739,7 +2739,7 @@ static void timeout_sender_response(unsigned int port)
 		pe_set_state(dev, PE_SRC_HARD_RESET);
 	}
 	else if (*dev->current_state == PE_SRC_GET_SINK_CAP ||
-		 *dev->current_state == PE_SRC_GET_PPS_STATUS)
+		 *dev->current_state == PE_SNK_GET_PPS_STATUS)
 	{
 		pe_set_state(dev, PE_SRC_READY);
 	}

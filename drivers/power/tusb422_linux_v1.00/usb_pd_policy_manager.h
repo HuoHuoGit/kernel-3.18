@@ -7,12 +7,14 @@
 
 #ifndef SRC_PDLIB_USB_PD_POLICY_MANAGER_H_
 #define SRC_PDLIB_USB_PD_POLICY_MANAGER_H_
+#include <linux/delay.h>
+#include <linux/workqueue.h>
 
 
 
 typedef struct {
     uint16_t    volt;
-    uint16_t    current;
+    uint16_t    curr;
     uint8_t     ptf;    // present temperature flag
     bool        omf;    // operation mode flag, set if current foldback
     bool        pps_supported;
@@ -67,6 +69,32 @@ typedef enum  {
 #define	BUS_THERM_ALARM_MASK		(1 << BUS_THERM_ALARM_SHIFT)
 #define	DIE_THERM_ALARM_MASK		(1 << DIE_THERM_ALARM_SHIFT)
 #define	BAT_UCP_ALARM_MASK		(1 << BAT_UCP_ALARM_SHIFT)
+
+
+struct max4_policy {
+	
+	int down_steps;
+	uint16_t volt_hysteresis;
+};
+
+struct bq2597x_cfg {
+	uint16_t bat_ovp_th;
+	uint16_t bat_ocp_th;
+	uint16_t bus_ovp_th;
+	uint16_t bus_ocp_th;
+
+	uint16_t bat_ucp_alarm_th;
+
+	uint16_t bat_ovp_alarm_th;
+	uint16_t bat_ocp_alarm_th;
+	uint16_t bus_ovp_alarm_th;
+	uint16_t bus_ocp_alarm_th;
+
+	uint16_t ac_ovp_th;
+	uint16_t ts_bus_fault_th;
+	uint16_t ts_bat_fault_th;
+	uint16_t ts_die_fault_th;
+};
 
 struct bq2589x {
 	bool charge_enabled;
@@ -136,8 +164,15 @@ typedef struct {
     struct power_supply *fc_psy;
     struct power_supply *sw_psy;
 
+    struct delayed_work pm_work;
+
 }pm_t;
 
+struct sys_config {
+	struct bq2597x_cfg bq2597x;
+	struct max4_policy max4_policy;
+	uint16_t min_vbat_start_maxchg4;
+};
 
 void usb_pd_pm_statemachine(unsigned int port);
 

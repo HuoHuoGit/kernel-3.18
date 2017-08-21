@@ -46,10 +46,10 @@
 #include <linux/bitops.h>
 #include <linux/math64.h>
 #include <linux/alarmtimer.h>
-#include "bq25898d_reg.h"
+#include "bq2589x_reg.h"
 
 #define DBG_FS
-#undef	DBG_FS
+//#undef	DBG_FS
 
 enum bq2589x_vbus_type {
 	BQ2589X_VBUS_NONE,
@@ -345,6 +345,7 @@ out:
 	return ret;
 }
 
+#if 0
 static void bq2589x_stay_awake(struct bq2589x_wakeup_source *source,
 	enum wakeup_src wk_src)
 {
@@ -376,7 +377,7 @@ static void bq2589x_relax(struct bq2589x_wakeup_source *source,
 	pr_debug("relax source %s, wakeup_src %d\n",
 		source->source.name, wk_src);
 }
-
+#endif
 static void bq2589x_wakeup_src_init(struct bq2589x *bq)
 {
 	spin_lock_init(&bq->bq2589x_ws.ws_lock);
@@ -1156,12 +1157,12 @@ static int bq2589x_init_device(struct bq2589x *bq)
 		pr_err("Failed to set boost current:%d\n", ret);
 	}
 
-	ret = bq2589x_enable_charger(bq);
+	ret = bq2589x_disable_charger(bq);
 	if (ret < 0) {
-		pr_err("Failed to enable charger:%d\n",  ret);
+		pr_err("Failed to disable charger:%d\n",  ret);
 		return ret;
 	} else {
-		bq->charge_enabled = true;
+		bq->charge_enabled = false;
 	}
 
 	if (pe.enable) {
@@ -1263,14 +1264,8 @@ static int bq2589x_get_prop_charge_type(struct bq2589x *bq)
 
 static int bq2589x_get_prop_charge_status(struct bq2589x *bq)
 {
-	union power_supply_propval batt_prop = {0,};
 	int ret;
 	u8 status;
-
-	ret = bq2589x_get_batt_property(bq, 
-					POWER_SUPPLY_PROP_STATUS, &batt_prop);
-	if (!ret && batt_prop.intval == POWER_SUPPLY_STATUS_FULL)
-		return POWER_SUPPLY_STATUS_FULL;
 
 	ret = bq2589x_read_byte(bq, &status, BQ2589X_REG_0B);
 	if (ret) {
@@ -1295,11 +1290,10 @@ static int bq2589x_get_prop_charge_status(struct bq2589x *bq)
 	}
 
 }
-
+#if 0
 static int bq2589x_get_prop_health(struct bq2589x *bq)
 {
 	int ret;
-	union power_supply_propval batt_prop = {0,};
 
 	if (bq->software_jeita_supported) {
 		if (bq->jeita_active) {
@@ -1314,23 +1308,16 @@ static int bq2589x_get_prop_health(struct bq2589x *bq)
 		} else {
 			ret = POWER_SUPPLY_HEALTH_GOOD;
 		}
-	} else {/* get health status from gauge */
-		ret = bq2589x_get_batt_property(bq, 
-					POWER_SUPPLY_PROP_HEALTH, &batt_prop);
-		if (!ret)
-			ret = batt_prop.intval;
-		else
-			ret = POWER_SUPPLY_HEALTH_UNKNOWN;
 	}
+	ret = POWER_SUPPLY_HEALTH_GOOD;
 	return ret;
 }
+#endif
 
 static enum power_supply_property bq2589x_charger_props[] = {
 		POWER_SUPPLY_PROP_CHARGE_TYPE, 
 		POWER_SUPPLY_PROP_PRESENT,
 		POWER_SUPPLY_PROP_CHARGING_ENABLED,
-		POWER_SUPPLY_PROP_VOLTAGE_NOW,
-		POWER_SUPPLY_PROP_CURRENT_NOW,
 		POWER_SUPPLY_PROP_STATUS,
 
 };
@@ -1372,6 +1359,7 @@ static int bq2589x_charger_set_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		pr_err(" POWER_SUPPLY_PROP_CHARGING_ENABLED: %d\n", val->intval);
 		bq2589x_charging_disable(bq, USER, !val->intval);
 		power_supply_changed(&bq->batt_psy);
 		break;
@@ -1786,7 +1774,6 @@ static void bq2589x_adjust_absolute_vindpm(struct bq2589x *bq)
 static int bq2589x_update_charging_profile(struct bq2589x *bq)
 {	
 	int ret;
-	union power_supply_propval prop = {0,};
 	int chg_ma;
 	int chg_mv;
 	int icl;
@@ -1965,7 +1952,7 @@ static void bq2589x_adapter_in_handler(struct bq2589x *bq)
 
 	cancel_delayed_work(&bq->discharge_jeita_work);
 
-	bq2589x_set_watchdog_timer(bq, 80);
+//	bq2589x_set_watchdog_timer(bq, 80);
 }
 
 static void bq2589x_adapter_out_handler(struct bq2589x *bq)
@@ -1998,7 +1985,7 @@ static void bq2589x_dump_reg(struct bq2589x *bq)
 	}
 
 }
-
+#if 1
 static void bq2589x_dump_status(struct bq2589x *bq)
 {
 	int ret;
@@ -2051,8 +2038,9 @@ static void bq2589x_dump_status(struct bq2589x *bq)
 		pr_err("%s\n", charge_stat_str[bq->charge_state]);
 	}
 
-	bq2589x_dump_reg(bq);
+//	bq2589x_dump_reg(bq);
 }
+#endif
 
 static void bq2589x_ico_workfunc(struct work_struct *work)
 {
@@ -2153,11 +2141,10 @@ static irqreturn_t bq2589x_charger_interrupt(int irq, void *data)
 	u8 status = 0;
 	u8 fault = 0;
 
-	pr_err("enter  interrrupt\n");
-
 	msleep(5);
 
 	bq2589x_dump_reg(bq);
+	bq2589x_dump_status(bq);
 
 	mutex_lock(&bq->irq_complete);
 	bq->irq_waiting = true;
@@ -2207,8 +2194,6 @@ static irqreturn_t bq2589x_charger_interrupt(int irq, void *data)
 	mutex_unlock(&bq->irq_complete);
 
 	power_supply_changed(&bq->batt_psy);
-
-	pr_err("exit interrrupt\n");
 
 	return IRQ_HANDLED;
 }
@@ -2293,7 +2278,6 @@ static int bq2589x_charger_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
 {
 	struct bq2589x *bq;
-	int irq_usb_id = 0;
 	int ret;
 
 	bq = devm_kzalloc(&client->dev, sizeof(struct bq2589x), GFP_KERNEL);
@@ -2486,13 +2470,13 @@ static void bq2589x_charger_shutdown(struct i2c_client *client)
 }
 
 static struct of_device_id bq2589x_charger_match_table[] = {
-	{.compatible = "ti,bq2589x",},
+	{.compatible = "ti,bq2589x-charger",},
 	{},
 };
 
 
 static const struct i2c_device_id bq2589x_charger_id[] = {
-	{ "bq2589x", BQ25898 },
+	{ "bq2589x", BQ25890 },
 	{},
 };
 

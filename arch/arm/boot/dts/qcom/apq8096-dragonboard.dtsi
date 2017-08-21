@@ -554,9 +554,9 @@
 	};
 
 	i2c@7575000 {
-	bq2589x_otg_supply: bq2589x@6B {
+	bq2589x_otg_supply: bq2589x@6A {
 			compatible = "ti,bq2589x-charger";
-			reg = <0x6B>;
+			reg = <0x6A>;
 			interrupt-parent = <&tlmm>;
 			interrupts = <0 2>;
 			pinctrl-names = "default";
@@ -573,7 +573,7 @@
 			ti,bq2589x,enable-12v;
 			ti,bq2589x,enable-hvdcp;
 					
-			ti,bq2589x,charge-voltage = <4400>;
+			ti,bq2589x,charge-voltage = <4200>;
 			ti,bq2589x,charge-current = <2000>;
 
 			ti,bq2589x,precharge-current = <256>;
@@ -618,11 +618,11 @@
 			ti,bq2597x,bus-ocp-disable;	
 			ti,bq2597x,bus-ocp-alarm-disable;	
 
-			
+		*/			
 			ti,bq2597x,bat-therm-disable;	
 			ti,bq2597x,bus-therm-disable;	
 			ti,bq2597x,die-therm-disable;	
-		*/
+
 			ti,bq2597x,bat-ovp-threshold = <4350>;
 			ti,bq2597x,bat-ovp-alarm-threshold = <4200>;
 			ti,bq2597x,bat-ocp-threshold = <8100>;

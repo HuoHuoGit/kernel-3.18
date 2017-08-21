@@ -118,6 +118,7 @@ struct tusb422_pwr_delivery {
 
 static struct tusb422_pwr_delivery *tusb422_pd;
 
+static struct mutex i2c_rw_lock;
 
 #ifdef TUSB422_DEBUG
 /* Device registers can be dumped via:
@@ -348,10 +349,10 @@ int tusb422_write(int reg, const void *data, int len)
 {
 	int ret;
 
+	mutex_lock(&i2c_rw_lock);
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
 #endif
-
 	if (len == 1)
 		ret = regmap_write(tusb422_pd->regmap, reg, *(unsigned int *)data);
 	else
@@ -360,6 +361,7 @@ int tusb422_write(int reg, const void *data, int len)
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
 #endif
+	mutex_unlock(&i2c_rw_lock);
 
 	return ret;
 }
@@ -368,6 +370,7 @@ int tusb422_read(int reg, void *data, int len)
 {
 	int ret;
 
+	mutex_lock(&i2c_rw_lock);
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
 #endif
@@ -377,6 +380,7 @@ int tusb422_read(int reg, void *data, int len)
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
 #endif
+	mutex_unlock(&i2c_rw_lock);
 
 	return ret;
 }
@@ -385,6 +389,7 @@ int tusb422_modify_reg(int reg, int clr_mask, int set_mask)
 {
 	int ret;
 
+	mutex_lock(&i2c_rw_lock);
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
 #endif
@@ -394,6 +399,7 @@ int tusb422_modify_reg(int reg, int clr_mask, int set_mask)
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
 #endif
+	mutex_unlock(&i2c_rw_lock);
 
 	return ret;
 }
@@ -404,6 +410,7 @@ int tusb422_write(int reg, const void *data, int len)
 {
 	int ret;
 
+	mutex_lock(&i2c_rw_lock);
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
 #endif
@@ -418,6 +425,7 @@ int tusb422_write(int reg, const void *data, int len)
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
 #endif
+	mutex_unlock(&i2c_rw_lock);
 
 	return ret;
 }
@@ -427,6 +435,7 @@ int tusb422_read(int reg, void *data, int len)
 {
 	int ret;
 
+	mutex_lock(&i2c_rw_lock);
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
 #endif
@@ -446,6 +455,7 @@ int tusb422_read(int reg, void *data, int len)
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
 #endif
+	mutex_unlock(&i2c_rw_lock);
 
 	return ret;
 }
@@ -456,6 +466,7 @@ int tusb422_modify_reg(int reg, int clr_mask, int set_mask)
 	uint8_t val;
 	uint8_t new_val;
 
+	mutex_lock(&i2c_rw_lock);
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_lock();
 #endif
@@ -474,6 +485,7 @@ int tusb422_modify_reg(int reg, int clr_mask, int set_mask)
 #ifdef CONFIG_DIRECT_CHARGER
 	ls_i2c_mutex_unlock();
 #endif
+	mutex_unlock(&i2c_rw_lock);
 
 	return ret;
 }
@@ -1151,6 +1163,8 @@ static int tusb422_probe(struct i2c_client *client, const struct i2c_device_id *
 	tusb422_pd->client = client;
 	i2c_set_clientdata(client, tusb422_pd);
 	tusb422_pd->dev = dev;
+	
+	mutex_init(&i2c_rw_lock);
 
 #ifdef CONFIG_REGMAP
 	tusb422_pd->regmap = devm_regmap_init_i2c(client, &tusb422_regmap_config);
@@ -1305,6 +1319,8 @@ err_nodev:
 
 static int tusb422_remove(struct i2c_client *client)
 {
+	
+	mutex_destroy(&i2c_rw_lock);
 	disable_irq_wake(tusb422_pd->alert_irq);
 	devm_free_irq(&client->dev, tusb422_pd->alert_irq, tusb422_pd);
 	hrtimer_cancel(&tusb422_pd->timer);

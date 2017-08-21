@@ -107,7 +107,8 @@ static ssize_t power_supply_show_property(struct device *dev,
 		return sprintf(buf, "%s\n", type_text[value.intval]);
 	else if (off == POWER_SUPPLY_PROP_SCOPE)
 		return sprintf(buf, "%s\n", scope_text[value.intval]);
-	else if (off >= POWER_SUPPLY_PROP_MODEL_NAME)
+	else if (off >= POWER_SUPPLY_PROP_MODEL_NAME 
+		&& off <= POWER_SUPPLY_PROP_BATTERY_TYPE)
 		return sprintf(buf, "%s\n", value.strval);
 
 	if (off == POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT)
@@ -260,6 +261,20 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(manufacturer),
 	POWER_SUPPLY_ATTR(serial_number),
 	POWER_SUPPLY_ATTR(battery_type),
+
+	POWER_SUPPLY_ATTR(ti_battery_present),
+	POWER_SUPPLY_ATTR(ti_vbus_present),
+	
+	POWER_SUPPLY_ATTR(ti_battery_voltage),
+	POWER_SUPPLY_ATTR(ti_battery_current),
+	POWER_SUPPLY_ATTR(ti_battery_temperature),
+	POWER_SUPPLY_ATTR(ti_bus_voltage),
+	POWER_SUPPLY_ATTR(ti_bus_current),
+	POWER_SUPPLY_ATTR(ti_bus_temperature),
+	POWER_SUPPLY_ATTR(ti_die_temperature),
+
+	POWER_SUPPLY_ATTR(ti_alarm_status),
+	POWER_SUPPLY_ATTR(ti_fault_status),
 };
 
 static struct attribute *

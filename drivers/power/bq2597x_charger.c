@@ -216,6 +216,9 @@ struct bq2597x {
 	bool therm_shutdown_flag;
 	bool therm_shutdown_stat;
 
+	int  prev_alarm;
+	int  prev_fault;
+
 	int chg_ma;
 	int chg_mv;
 
@@ -932,6 +935,7 @@ static int bq2597x_get_adc_data(struct bq2597x *bq, int channel,  int *result)
 {
 	int ret;
 	u16 val;
+	u16 t;
 
 	if (channel > ADC_MAX_NUM)
 		return -EINVAL;
@@ -939,8 +943,10 @@ static int bq2597x_get_adc_data(struct bq2597x *bq, int channel,  int *result)
 	ret = bq2597x_read_word(bq, ADC_REG_BASE + (channel << 1), &val);
 	if (ret < 0)
 		return ret;
-
-	*result = (int)val;
+	t = val & 0xFF;
+	t <<= 8;
+	t |= (val >> 8) & 0xFF; 
+	*result = (int)t;
 
 	return 0;
 }
@@ -1343,13 +1349,77 @@ static int bq2597x_init_int_src(struct bq2597x *bq)
 
 static int bq2597x_init_device(struct bq2597x *bq)
 {
-	bq2597x_enable_wdt(bq,false);	
+	bq2597x_enable_wdt(bq, false);
 	bq2597x_init_protection(bq);
 	bq2597x_init_adc(bq);
 	bq2597x_init_int_src(bq);
 
 	return 0;
 }
+
+
+static int bq2597x_set_present(struct bq2597x *bq, bool present)
+{
+	bq->usb_present = present;
+
+	if (present)
+		bq2597x_init_device(bq);
+	return 0;
+}
+
+
+static ssize_t bq2597x_show_registers(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct bq2597x *bq = dev_get_drvdata(dev);
+	u8 addr;
+	u8 val;
+	u8 tmpbuf[300];
+	int len;
+	int idx = 0;
+	int ret ;
+
+	idx = snprintf(buf, PAGE_SIZE, "%s:\n", "bq25970");
+	for (addr = 0x0; addr <= 0x2A; addr++) {
+		ret = bq2597x_read_byte(bq, addr, &val);
+		if (ret == 0) {
+			len = snprintf(tmpbuf, PAGE_SIZE - idx,
+						"Reg[%.2X] = 0x%.2x\n", addr, val);
+			memcpy(&buf[idx], tmpbuf, len);
+			idx += len;
+		}
+	}
+
+	return idx;
+}
+
+static ssize_t bq2597x_store_register(struct device *dev,
+				struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct bq2597x *bq = dev_get_drvdata(dev);
+	int ret;
+	unsigned int reg;
+	unsigned int val;
+
+	ret = sscanf(buf,"%x %x",&reg, &val);
+	if (ret == 2 && reg <= 0x2A) {
+		bq2597x_write_byte(bq,(unsigned char)reg,(unsigned char)val);
+	}
+
+	return count;
+}
+
+
+static DEVICE_ATTR(registers, 0660, bq2597x_show_registers, bq2597x_store_register);
+
+static struct attribute *bq2597x_attributes[] = {
+	&dev_attr_registers.attr,
+	NULL,
+};
+
+static const struct attribute_group bq2597x_attr_group = {
+	.attrs = bq2597x_attributes,
+};
 
 static enum power_supply_property bq2597x_charger_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
@@ -1360,9 +1430,9 @@ static enum power_supply_property bq2597x_charger_props[] = {
 	POWER_SUPPLY_PROP_TI_VBUS_PRESENT,
 	POWER_SUPPLY_PROP_TI_BATTERY_VOLTAGE,
 	POWER_SUPPLY_PROP_TI_BATTERY_CURRENT,
-	POWER_SUPPLY_PROP_TI_BATTERY_TEMPERATURE, 
+	POWER_SUPPLY_PROP_TI_BATTERY_TEMPERATURE,
 	POWER_SUPPLY_PROP_TI_BUS_VOLTAGE,
-	POWER_SUPPLY_PROP_TI_BUS_CURRNET,
+	POWER_SUPPLY_PROP_TI_BUS_CURRENT,
 	POWER_SUPPLY_PROP_TI_BUS_TEMPERATURE,
 	POWER_SUPPLY_PROP_TI_DIE_TEMPERATURE,
 	POWER_SUPPLY_PROP_TI_ALARM_STATUS,
@@ -1371,6 +1441,8 @@ static enum power_supply_property bq2597x_charger_props[] = {
 
 };
 
+static void bq2597x_update_status(struct bq2597x *bq);
+
 static int bq2597x_charger_get_property(struct power_supply *psy,
 				enum power_supply_property psp,
 				union power_supply_propval *val)
@@ -1378,8 +1450,6 @@ static int bq2597x_charger_get_property(struct power_supply *psy,
 	struct bq2597x *bq = container_of(psy, struct bq2597x, fc2_psy);
 	int ret;
 	int result;
-
-	pr_err("psp=%d\n", psp);
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
@@ -1406,42 +1476,73 @@ static int bq2597x_charger_get_property(struct power_supply *psy,
 		val->intval = bq->vbat_volt;
 		break;
 	case POWER_SUPPLY_PROP_TI_BATTERY_CURRENT:
+		ret = bq2597x_get_adc_data(bq, ADC_IBAT, &result);
+		if (!ret)
+			bq->ibat_curr = result;
+
 		val->intval = bq->ibat_curr;
 		break;
 	case POWER_SUPPLY_PROP_TI_BATTERY_TEMPERATURE:
+		ret = bq2597x_get_adc_data(bq, ADC_TBAT, &result);
+		if (!ret)
+			bq->bat_temp = result;
+
 		val->intval = bq->bat_temp;
 		break;
 	case POWER_SUPPLY_PROP_TI_BUS_VOLTAGE:
+		ret = bq2597x_get_adc_data(bq, ADC_VBUS, &result);
+		if (!ret)
+			bq->vbus_volt = result;
+
 		val->intval = bq->vbus_volt;
 		break;
-	case POWER_SUPPLY_PROP_TI_BUS_CURRNET:
+	case POWER_SUPPLY_PROP_TI_BUS_CURRENT:
+		ret = bq2597x_get_adc_data(bq, ADC_IBUS, &result);
+		if (!ret)
+			bq->ibus_curr = result;
+
 		val->intval = bq->ibus_curr;
 		break;
 	case POWER_SUPPLY_PROP_TI_BUS_TEMPERATURE:
+		ret = bq2597x_get_adc_data(bq, ADC_TBUS, &result);
+		if (!ret)
+			bq->bus_temp = result;
+
 		val->intval = bq->bus_temp;
 		break;
 	case POWER_SUPPLY_PROP_TI_DIE_TEMPERATURE:
+		ret = bq2597x_get_adc_data(bq, ADC_TDIE, &result);
+		if (!ret)
+			bq->die_temp = result;
+
 		val->intval = bq->die_temp;
 		break;
 	case POWER_SUPPLY_PROP_TI_ALARM_STATUS:
-		val->intval =	( (bq->bat_ovp_alarm << BAT_OVP_ALARM_SHIFT)
-				| (bq->bat_ocp_alarm << BAT_OCP_ALARM_SHIFT)
-				| (bq->bat_ucp_alarm << BAT_UCP_ALARM_SHIFT)
-				| (bq->bus_ovp_alarm << BUS_OVP_ALARM_SHIFT)
-				| (bq->bus_ocp_alarm << BUS_OCP_ALARM_SHIFT)
-				| (bq->bat_therm_alarm << BAT_THERM_ALARM_SHIFT)
-				| (bq->bus_therm_alarm << BUS_THERM_ALARM_SHIFT)
-				| (bq->die_therm_alarm << DIE_THERM_ALARM_SHIFT));
+		/* call bq2597x_update_status to get recent status/flag
+		 * alarm/fault clear would not trigger interrupt, so to
+		 * to read to again to reflect current status.
+		 * */
+		bq2597x_update_status(bq);
+
+		val->intval = ((bq->bat_ovp_alarm << BAT_OVP_ALARM_SHIFT)
+			| (bq->bat_ocp_alarm << BAT_OCP_ALARM_SHIFT)
+			| (bq->bat_ucp_alarm << BAT_UCP_ALARM_SHIFT)
+			| (bq->bus_ovp_alarm << BUS_OVP_ALARM_SHIFT)
+			| (bq->bus_ocp_alarm << BUS_OCP_ALARM_SHIFT)
+			| (bq->bat_therm_alarm << BAT_THERM_ALARM_SHIFT)
+			| (bq->bus_therm_alarm << BUS_THERM_ALARM_SHIFT)
+			| (bq->die_therm_alarm << DIE_THERM_ALARM_SHIFT));
 		break;
 
 	case POWER_SUPPLY_PROP_TI_FAULT_STATUS:
-		val->intval =	( (bq->bat_ovp_fault << BAT_OVP_FAULT_SHIFT)
-				| (bq->bat_ocp_fault << BAT_OCP_FAULT_SHIFT)
-				| (bq->bus_ovp_fault << BUS_OVP_FAULT_SHIFT)
-				| (bq->bus_ocp_fault << BUS_OCP_FAULT_SHIFT)
-				| (bq->bat_therm_fault << BAT_THERM_FAULT_SHIFT)
-				| (bq->bus_therm_fault << BUS_THERM_FAULT_SHIFT)
-				| (bq->die_therm_fault << DIE_THERM_FAULT_SHIFT));
+		bq2597x_update_status(bq);
+		val->intval = ((bq->bat_ovp_fault << BAT_OVP_FAULT_SHIFT)
+			| (bq->bat_ocp_fault << BAT_OCP_FAULT_SHIFT)
+			| (bq->bus_ovp_fault << BUS_OVP_FAULT_SHIFT)
+			| (bq->bus_ocp_fault << BUS_OCP_FAULT_SHIFT)
+			| (bq->bat_therm_fault << BAT_THERM_FAULT_SHIFT)
+			| (bq->bus_therm_fault << BUS_THERM_FAULT_SHIFT)
+			| (bq->die_therm_fault << DIE_THERM_FAULT_SHIFT));
 		break;
 
 
@@ -1461,14 +1562,16 @@ static int bq2597x_charger_set_property(struct power_supply *psy,
 				struct bq2597x, fc2_psy);
 	switch (prop) {
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
-		if (bq->usb_present) {
+	//	if (bq->usb_present) {
 			bq2597x_enable_charge(bq, val->intval);
 			bq2597x_check_charge_enabled(bq, &bq->charge_enabled);
 			pr_info("POWER_SUPPLY_PROP_CHARGING_ENABLED: %s\n",
 					val->intval ? "enable" : "disable");
-		}
+	//	}
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
+		bq2597x_set_present(bq, !!val->intval);
+		pr_info("set present :%d\n", val->intval);
 		break;
 	default:
 		return -EINVAL;
@@ -1516,20 +1619,39 @@ static int bq2597x_psy_register(struct bq2597x *bq)
 
 	return 0;
 }
-/* 
+
+static void bq2597x_dump_reg(struct bq2597x *bq)
+{
+
+	int ret;
+	u8 val;
+	u8 addr;
+
+	for (addr = 0x00; addr < 0x2B; addr++) {
+		ret = bq2597x_read_byte(bq, addr, &val);
+		if (!ret)
+			pr_err("Reg[%02X] = 0x%02X\n", addr, val);
+	}
+
+}
+/*
  * update alarm or fault status, PD policy manager will process the events
  */
-static void bq2597x_int_handler(struct bq2597x *bq)
+static void bq2597x_update_status(struct bq2597x *bq)
 {
 	int ret;
 	u8 flag;
 	u8 stat;
+	bool changed = false;
 
+	mutex_lock(&bq->data_lock);
 	/*read to clear alarm flag*/
 	bq2597x_read_byte(bq, BQ2597X_REG_0E, &flag);
 
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_0D, &stat);
-	if (!ret) {
+	if (!ret && stat != bq->prev_alarm) {
+		changed = true;
+		bq->prev_alarm = stat;
 		bq->bat_ovp_alarm = !!(stat & BAT_OVP_ALARM);
 		bq->bat_ocp_alarm = !!(stat & BAT_OCP_ALARM);
 		bq->bus_ovp_alarm = !!(stat & BUS_OVP_ALARM);
@@ -1539,8 +1661,10 @@ static void bq2597x_int_handler(struct bq2597x *bq)
 		bq->bat_ucp_alarm = !!(stat & BAT_UCP_ALARM);
 	}
 
-	ret = bq2597x_read_byte(bq, BQ2597X_REG_10, &flag);
-	if (!ret) {
+	ret = bq2597x_read_byte(bq, BQ2597X_REG_11, &flag);
+	if (!ret && flag != bq->prev_fault) {
+		changed = true;
+		bq->prev_fault = flag;
 		bq->bat_ovp_fault = !!(stat & BAT_OVP_FAULT);
 		bq->bat_ocp_fault = !!(stat & BAT_OCP_FAULT);
 		bq->bus_ovp_fault = !!(stat & BUS_OVP_FAULT);
@@ -1552,7 +1676,11 @@ static void bq2597x_int_handler(struct bq2597x *bq)
 		bq->bus_therm_alarm = !!(stat & TBUS_TBAT_ALARM);
 	}
 
-	pr_err("alarm stat=0x%02X, fault flag =0x%02X\n", stat, flag);
+	mutex_unlock(&bq->data_lock);
+	
+	if (changed)
+		power_supply_changed(&bq->fc2_psy);
+
 }
 
 
@@ -1560,6 +1688,8 @@ static void bq2597x_int_handler(struct bq2597x *bq)
 static irqreturn_t bq2597x_charger_interrupt(int irq, void *dev_id)
 {
 	struct bq2597x *bq = dev_id;
+
+	pr_err("enter");
 
 	mutex_lock(&bq->irq_complete);
 	bq->irq_waiting = true;
@@ -1575,30 +1705,24 @@ static irqreturn_t bq2597x_charger_interrupt(int irq, void *dev_id)
 	bq->irq_waiting = false;
 
 	/* TODO */
-	bq2597x_int_handler(bq);
+	bq2597x_update_status(bq);
+
+	bq2597x_dump_reg(bq);
 
 	mutex_unlock(&bq->irq_complete);
 
-	power_supply_changed(&bq->fc2_psy);
+	pr_err("alarm stat=0x%02X, fault flag =0x%02X\n", bq->prev_alarm, bq->prev_fault);
+
 	return IRQ_HANDLED;
 }
 
-/*
-static void bq2597x_dump_reg(struct bq2597x *bq)
+
+static void determine_initial_status(struct bq2597x *bq)
 {
-
-	int ret;
-	u8 val;
-	u8 addr;
-
-	for (addr = 0x00; addr < 0x2B; addr++) {
-		ret = bq2597x_read_byte(bq, addr, &val);
-		if (!ret)
-			pr_err("Reg[%02X] = 0x%02X\n", addr, val);
-	}
-
+	bq2597x_charger_interrupt(bq->client->irq, bq);
 }
-*/
+
+
 
 static int show_registers(struct seq_file *m, void *data)
 {
@@ -1707,10 +1831,6 @@ static int bq2597x_charger_probe(struct i2c_client *client,
 		return ret;
 	}
 
-	ret = bq2597x_psy_register(bq);
-	if (ret)
-		return ret;
-
 	if (client->irq) {
 		ret = devm_request_threaded_irq(&client->dev, client->irq,
 				NULL, bq2597x_charger_interrupt,
@@ -1724,8 +1844,21 @@ static int bq2597x_charger_probe(struct i2c_client *client,
 		enable_irq_wake(client->irq);
 	}
 
+	ret = bq2597x_psy_register(bq);
+	if (ret)
+		return ret;
+
 	device_init_wakeup(bq->dev, 1);
 	create_debugfs_entry(bq);
+
+	ret = sysfs_create_group(&bq->dev->kobj, &bq2597x_attr_group);
+	if (ret) {
+		pr_err("failed to register sysfs. err: %d\n", ret);
+		goto err_1;
+	}
+
+
+	determine_initial_status(bq);
 
 	pr_info("bq2597x probe successfully, Part Num:%d, Revision:%d\n!",
 				bq->part_no, bq->revision);
@@ -1806,6 +1939,7 @@ static int bq2597x_charger_remove(struct i2c_client *client)
 
 	debugfs_remove_recursive(bq->debug_root);
 
+	sysfs_remove_group(&bq->dev->kobj, &bq2597x_attr_group);
 
 	return 0;
 }

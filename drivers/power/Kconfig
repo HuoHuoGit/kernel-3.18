@@ -625,6 +625,14 @@ config CHARGER_BQ2597X
 	  Say Y to enable support for the TI BQ2415x battery charger
 	  PMICs.
 
+config CHARGER_BQ2589X
+	tristate "TI BQ2589x battery charger driver"
+	depends on I2C
+	default y
+	help
+	  Say Y to enable support for the TI BQ2415x battery charger
+	  PMICs.
+
 
 source "drivers/power/reset/Kconfig"
 
