@@ -1640,8 +1640,8 @@ static void bq2597x_dump_reg(struct bq2597x *bq)
 static void bq2597x_update_status(struct bq2597x *bq)
 {
 	int ret;
-	u8 flag;
-	u8 stat;
+	u8 flag = 0;
+	u8 stat = 0;
 	bool changed = false;
 
 	mutex_lock(&bq->data_lock);
@@ -1665,15 +1665,15 @@ static void bq2597x_update_status(struct bq2597x *bq)
 	if (!ret && flag != bq->prev_fault) {
 		changed = true;
 		bq->prev_fault = flag;
-		bq->bat_ovp_fault = !!(stat & BAT_OVP_FAULT);
-		bq->bat_ocp_fault = !!(stat & BAT_OCP_FAULT);
-		bq->bus_ovp_fault = !!(stat & BUS_OVP_FAULT);
-		bq->bus_ocp_fault = !!(stat & BUS_OCP_FAULT);
-		bq->bat_therm_fault = !!(stat & TS_BAT_FAULT);
-		bq->bus_therm_fault = !!(stat & TS_BUS_FAULT);
+		bq->bat_ovp_fault = !!(flag & BAT_OVP_FAULT);
+		bq->bat_ocp_fault = !!(flag & BAT_OCP_FAULT);
+		bq->bus_ovp_fault = !!(flag & BUS_OVP_FAULT);
+		bq->bus_ocp_fault = !!(flag & BUS_OCP_FAULT);
+		bq->bat_therm_fault = !!(flag & TS_BAT_FAULT);
+		bq->bus_therm_fault = !!(flag & TS_BUS_FAULT);
 
-		bq->bat_therm_alarm = !!(stat & TBUS_TBAT_ALARM);
-		bq->bus_therm_alarm = !!(stat & TBUS_TBAT_ALARM);
+		bq->bat_therm_alarm = !!(flag & TBUS_TBAT_ALARM);
+		bq->bus_therm_alarm = !!(flag & TBUS_TBAT_ALARM);
 	}
 
 	mutex_unlock(&bq->data_lock);

@@ -1067,8 +1067,6 @@ static void tusb422_work(struct work_struct *work)
 {
 	struct tusb422_pwr_delivery *tusb422_pwr = container_of(work, struct tusb422_pwr_delivery, work);
 
-	pr_err("\n");
-
 	if (tusb422_pwr->alert_status)
 	{
 		tusb422_pwr->alert_status = 0;

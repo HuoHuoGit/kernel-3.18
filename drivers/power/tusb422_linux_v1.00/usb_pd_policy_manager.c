@@ -64,7 +64,7 @@
 
 
 #define BATT_MAX_VOLT			4200
-#define BATT_MAX_CURRENT		4000
+#define BATT_MAX_CURRENT		4500
 #define	BUS_OVP_THRESHOLD		10000
 #define	BUS_OVP_ALARM_THRESHOLD		9500
 
@@ -186,6 +186,18 @@ static void usb_pd_pm_update_fc_status(void)
 	ret = pm_state.fc_psy->get_property(pm_state.fc_psy, POWER_SUPPLY_PROP_TI_BUS_CURRENT, &val);
 	if (!ret)
 		pm_state.bq2597x.ibus_curr = val.intval; 
+
+	ret = pm_state.fc_psy->get_property(pm_state.fc_psy, POWER_SUPPLY_PROP_TI_BUS_TEMPERATURE, &val);
+	if (!ret)
+		pm_state.bq2597x.bus_temp = val.intval; 
+
+	ret = pm_state.fc_psy->get_property(pm_state.fc_psy, POWER_SUPPLY_PROP_TI_BATTERY_TEMPERATURE, &val);
+	if (!ret)
+		pm_state.bq2597x.bat_temp = val.intval; 
+
+	ret = pm_state.fc_psy->get_property(pm_state.fc_psy, POWER_SUPPLY_PROP_TI_DIE_TEMPERATURE, &val);
+	if (!ret)
+		pm_state.bq2597x.die_temp = val.intval; 
 
 	ret = pm_state.fc_psy->get_property(pm_state.fc_psy, POWER_SUPPLY_PROP_TI_BATTERY_PRESENT, &val);
 	if (!ret)
@@ -710,6 +722,7 @@ static int usb_pd_pm_maxchg4_charge(unsigned int port)
         steps = sys_config.max4_policy.down_steps;
     }
 
+#if 1
     if (pm_state.bq2597x.bat_therm_fault ) // battery overheat, stop charge
         return -1;
     else if (pm_state.bq2597x.bus_therm_fault || pm_state.bq2597x.die_therm_fault)
@@ -718,12 +731,13 @@ static int usb_pd_pm_maxchg4_charge(unsigned int port)
 //        steps = sys_config.max4_policy.down_steps * 2;
         return 2; // go to switch, and try to ramp up if ok
     }
-
+#endif
     if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_alarm_th - 50 &&
             pm_state.bq2597x.ibat_curr < sys_config.bq2597x.bat_ucp_alarm_th)
         return 1; // goto switch, never go to flash charge
 
-    pm_state.request_volt = adapter.volt + steps * 20;
+    //pm_state.request_volt = adapter.volt + steps * 20;
+    pm_state.request_volt = pm_state.request_volt + steps * 20;
 
     if (pm_state.request_volt < pm_state.bq2597x.vbat_volt * 2)
         pm_state.request_volt = pm_state.bq2597x.vbat_volt * 2 + 40; //cable loss
@@ -888,10 +902,16 @@ void usb_pd_pm_statemachine(unsigned int port)
                 usb_pd_pm_move_state(PD_PM_STATE_STOP_CHARGE);
                 break;
             } else if (ret == -2 || ret == 1) {
+		pr_err(" return to switch charge, reason:%d\n", ret);
+		pr_err(" bus_therm_fault:%d, die_therm_fault:%d\n", pm_state.bq2597x.bus_therm_fault,
+								    pm_state.bq2597x.die_therm_fault);
+		pr_err(" bus_temp:%d, die_temp:%d\n", pm_state.bq2597x.bus_temp, pm_state.bq2597x.die_temp);
+
                 usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY);
                 pm_state.sw_from_maxchg4 = true;
                 break;
             } else if (ret == 2) {
+		pr_err(" return to switch charge, reason:%d\n", ret);
                 usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY);
             } else {// normal tune adapter output
                 usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
