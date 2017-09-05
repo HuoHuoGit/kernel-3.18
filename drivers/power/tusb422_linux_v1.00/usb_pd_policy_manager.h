@@ -94,6 +94,14 @@ struct bq2597x_cfg {
 	uint16_t ts_bus_fault_th;
 	uint16_t ts_bat_fault_th;
 	uint16_t ts_die_fault_th;
+
+	/* software protection threshold*/
+	uint32_t sw_bat_ovp_th;
+	uint32_t sw_bat_ocp_th;
+	uint32_t sw_bus_ovp_th;
+	uint32_t sw_bus_ocp_th;
+	uint32_t sw_bat_ucp_th;
+
 };
 
 struct bq2589x {

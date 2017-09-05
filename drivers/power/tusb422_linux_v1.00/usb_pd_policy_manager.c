@@ -67,24 +67,32 @@
 #define SRC_PDO_UNCHUNKED_EXT_MSG_SUP_BIT ((uint32_t)0x01 << 24)
 
 
-#define BATT_MAX_VOLT			4200
-#define BATT_MAX_CURRENT		4500
+#define BATT_MAX_CHG_VOLT		4200
+#define BATT_MAX_CHG_CURR		4500
 #define	BUS_OVP_THRESHOLD		10000
 #define	BUS_OVP_ALARM_THRESHOLD		9500
 
 
-static const struct sys_config sys_config = {
-	.bq2597x.bat_ovp_th	= BATT_MAX_VOLT + 100,
-	.bq2597x.bat_ocp_th	= BATT_MAX_CURRENT + 2000,
-	.bq2597x.bus_ovp_th	= BUS_OVP_THRESHOLD,
-	.bq2597x.bus_ocp_th	= (BATT_MAX_CURRENT >> 1 ) + 750,
+#define BUS_VOLT_INIT_UP		200		
 
-	.bq2597x.bat_ovp_alarm_th	= BATT_MAX_VOLT,
-	.bq2597x.bat_ocp_alarm_th	= BATT_MAX_CURRENT + 1000,
+static const struct sys_config sys_config = {
+	.bq2597x.bat_ovp_th		= BATT_MAX_CHG_VOLT + 100,
+	.bq2597x.bat_ocp_th		= BATT_MAX_CHG_CURR + 2000,
+	.bq2597x.bus_ovp_th		= BUS_OVP_THRESHOLD,
+	.bq2597x.bus_ocp_th		= (BATT_MAX_CHG_CURR >> 1 ) + 750,
+
+	.bq2597x.bat_ovp_alarm_th	= BATT_MAX_CHG_VOLT,
+	.bq2597x.bat_ocp_alarm_th	= BATT_MAX_CHG_CURR + 1000,
 	.bq2597x.bus_ovp_alarm_th	= BUS_OVP_ALARM_THRESHOLD,
-	.bq2597x.bus_ocp_alarm_th	= (BATT_MAX_CURRENT >> 1 ) + 550,
+	.bq2597x.bus_ocp_alarm_th	= (BATT_MAX_CHG_CURR >> 1 ) + 550,
 
 	.bq2597x.bat_ucp_alarm_th	= 2000,
+
+	.bq2597x.sw_bat_ovp_th		= BATT_MAX_CHG_VOLT, 
+	.bq2597x.sw_bat_ocp_th		= BATT_MAX_CHG_CURR - 100,
+	.bq2597x.sw_bus_ovp_th		= BUS_OVP_THRESHOLD,
+	.bq2597x.sw_bus_ocp_th		= (BATT_MAX_CHG_CURR >> 1) + 500,
+	.bq2597x.sw_bat_ucp_th		= 2000,
 
 	.max4_policy.down_steps = -1,
 	.max4_policy.volt_hysteresis = 50,
@@ -403,7 +411,7 @@ static void usb_pd_pm_switch_to_ardo(unsigned int port)
 {
 	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
 
-	pm_state.request_volt = pm_state.bq2597x.vbat_volt * 2 + 300;
+	pm_state.request_volt = pm_state.bq2597x.vbat_volt * 2 + BUS_VOLT_INIT_UP;
 	pm_state.request_current = dev->apdo_max_curr;
 
 	dev->selected_pdo = dev->rx_src_pdo[dev->apdo_idx].pdo;
@@ -493,8 +501,10 @@ const unsigned char *pm_state_str[] = {
 
 static void usb_pd_pm_move_state(pm_sm_state_t state)
 {
+#if 0
     pr_debug("pm_state change:%s -> %s\n", 
 		pm_state_str[pm_state.state], pm_state_str[state]);
+#endif
 
     pm_state.state_log[pm_state.log_idx] = pm_state.state;
     pm_state.log_idx++;
@@ -505,7 +515,6 @@ static void usb_pd_pm_move_state(pm_sm_state_t state)
 void usb_pd_pm_statemachine(unsigned int port)
 {
     usb_pd_port_t *dev = usb_pd_pe_get_device(port);
-    //tcpc_device_t *typec_dev = tcpm_get_device(port);
     int ret;
 
 
@@ -586,18 +595,21 @@ void usb_pd_pm_statemachine(unsigned int port)
         if (*dev->current_state == PE_SNK_READY) {
             usb_pd_pm_switch_to_ardo(port);
             usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
-  //          pm_run_pe_sm = true;
             usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_ENTRY_2);
         }
         break;
 
     case PD_PM_STATE_MAXCHG4_ENTRY_2:
         if (*dev->current_state == PE_SNK_READY) {
-            if (pm_state.bq2597x.vbus_volt > (pm_state.bq2597x.vbat_volt * 205 / 100)
-		&& pm_state.bq2597x.vbus_volt < (pm_state.bq2597x.vbat_volt * 230 / 100))
+            if (pm_state.bq2597x.vbus_volt < (pm_state.bq2597x.vbat_volt * 2 + BUS_VOLT_INIT_UP - 50)) {
+		pm_state.request_volt += 20;
+		usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
+	    } else if (pm_state.bq2597x.vbus_volt > (pm_state.bq2597x.vbat_volt * 2 + BUS_VOLT_INIT_UP + 50)) {
+		pm_state.request_volt -= 20;
+		usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
+	    } else {
                 usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_ENTRY_3);
-            else
-                usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_ENTRY_1);
+	    }
         }
         break;
     case PD_PM_STATE_MAXCHG4_ENTRY_3:
@@ -655,9 +667,6 @@ void usb_pd_pm_statemachine(unsigned int port)
     }
 
 }
-
-
-
 
 void build_src_caps(unsigned int port)
 {
