@@ -207,6 +207,7 @@ typedef enum
 
 #define	APDO_MAX_VOLTAGE(pdo)		(((pdo) >> 17) & 0xFF)
 #define APDO_MIN_VOLTAGE(pdo)		(((pdo) >> 8) & 0xFF)
+#define APDO_MAX_CURRENT(pdo)		((pdo) & 0x7F)
 
 #define RDO_OPERATIONAL_CURRENT_OR_POWER(rdo)     (((rdo) >> 10) & 0x3FF)
 #define RDO_MIN_OPERATIONAL_CURRENT_OR_POWER(rdo) ((rdo) & 0x3FF)

@@ -47,6 +47,10 @@
 #include <linux/delay.h>
 #include <linux/workqueue.h>
 
+#ifdef pr_debug
+#undef pr_debug
+#define pr_debug pr_err
+#endif
 
 #ifdef CONFIG_TUSB422
 	#include <linux/string.h>
@@ -245,7 +249,6 @@ static int usb_pd_pm_enable_fc(bool enable)
 	if (!pm_state.fc_psy) {
 		pm_state.fc_psy = power_supply_get_by_name("bq2597x");
 		if (!pm_state.fc_psy) {
-	//		pr_err("fc_psy not found\n");
 			return -ENODEV;
 		}
 	}
@@ -265,7 +268,6 @@ static int usb_pd_pm_enable_sw(bool enable)
 	if (!pm_state.sw_psy) {
 		pm_state.sw_psy = power_supply_get_by_name("bq2597x");
 		if (!pm_state.sw_psy) {
-	//		pr_err("sw_psy not found\n");
 			return -ENODEV;
 		}
 	}
@@ -285,7 +287,6 @@ static int usb_pd_pm_check_fc_enabled(void)
 	if (!pm_state.fc_psy) {
 		pm_state.fc_psy = power_supply_get_by_name("bq2597x");
 		if (!pm_state.fc_psy) {
-			pr_err("fc_psy not found\n");
 			return -ENODEV;
 		}
 	}
@@ -306,7 +307,6 @@ static int usb_pd_pm_check_sw_enabled(void)
 	if (!pm_state.sw_psy) {
 		pm_state.sw_psy = power_supply_get_by_name("bq2589x");
 		if (!pm_state.sw_psy) {
-			pr_err("sw_psy not found\n");
 			return -ENODEV;
 		}
 	}
@@ -319,84 +319,13 @@ static int usb_pd_pm_check_sw_enabled(void)
 	return ret;
 }
 
-
-//------------------------------------------------------------------------------------------
-// Returns true if the new_offer is better than the current_offer, else returns false.
-//------------------------------------------------------------------------------------------
-#if 0
-static bool better_offer(pdo_offer_t *new_offer, pdo_offer_t *current_offer, pdo_priority_t pdo_priority)
-{
-	// Compare offers based on user defined priority (voltage, current, or power).
-	if (pdo_priority == PRIORITY_VOLTAGE)
-	{
-		if (new_offer->min_voltage > current_offer->min_voltage)
-		{
-			return true;
-		}
-		else if (new_offer->min_voltage == current_offer->min_voltage)
-		{
-			if (new_offer->max_voltage > current_offer->max_voltage)
-			{
-				return true;
-			}
-		}
-	}
-	else if (pdo_priority == PRIORITY_CURRENT)
-	{
-		if (new_offer->max_current > current_offer->max_current)
-		{
-			return true;
-		}
-		else if (new_offer->max_current == current_offer->max_current)
-		{
-			if (new_offer->min_voltage > current_offer->min_voltage)
-			{
-				return true;
-			}
-		}
-	}
-	else /* PRIORITY_POWER */
-	{
-		if (new_offer->max_power > current_offer->max_power)
-		{
-			return true;
-		}
-		else if (new_offer->max_power == current_offer->max_power)
-		{
-			if (new_offer->min_voltage > current_offer->min_voltage)
-			{
-				return true;
-			}
-		}
-	}
-
-	// Both offers are equal in terms of user defined priority
-	// so pick based on supply type:  Fixed > Variable > Battery.
-	if (new_offer->supply_type != current_offer->supply_type)
-	{
-		if (new_offer->supply_type == SUPPLY_TYPE_FIXED)
-		{
-			return true;
-		}
-		else if (current_offer->supply_type == SUPPLY_TYPE_FIXED)
-		{
-			return false;
-		}
-		else if (new_offer->supply_type == SUPPLY_TYPE_VARIABLE)
-		{
-			return true;
-		}
-	}
-
-	return false;
-}
-#endif
-#if 1
 static void usb_pd_pm_retrieve_src_pdo(unsigned int port)
 {
 	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
 	uint8_t *pdo_data = dev->rx_msg_buf;
 	uint32_t pdo;
+	int max_volt;
+	int max_curr;
 	int i;
 
 	dev->rx_src_pdo_num = dev->rx_msg_data_len >> 2;
@@ -414,15 +343,24 @@ static void usb_pd_pm_retrieve_src_pdo(unsigned int port)
 		}
 
 		if ((enum supply_type_t )PDO_SUPPLY_TYPE(pdo) == SUPPLY_TYPE_AUGMENTED) {
-			dev->apdo_idx = i;
-			adapter.pps_supported = true;
+			max_volt = APDO_MAX_VOLTAGE(pdo) * 100;
+			max_curr = APDO_MAX_CURRENT(pdo) * 50;
+			pr_debug("APDO supported: %u, max_volt:%u, max_curr:%u",
+					i, max_volt, max_curr);
+			/*
+			 * if volt is satisfied, we prefer PDO with higher current capability
+			 */
+			if (max_volt >= 11000 && max_curr > dev->apdo_max_curr) {
+				dev->apdo_max_volt = max_volt;
+				dev->apdo_max_curr = max_curr;
+				dev->apdo_idx = i;
+				adapter.pps_supported = true;
+			}
 		}
 	}
 
 }
-#endif
 
-#if 1
 void usb_pd_pm_select_default_5v(unsigned int port)
 {
 	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
@@ -434,88 +372,15 @@ void usb_pd_pm_select_default_5v(unsigned int port)
 	CRIT("PDO-%u 0x%08x selected\n", dev->object_position, dev->selected_pdo);
 	DEBUG("selected_snk_pdo_idx: %u\n", dev->selected_snk_pdo_idx);
 }
-#endif
 
 void usb_pd_pm_evaluate_src_caps(unsigned int port)
 {
-#if 1
+
 	usb_pd_pm_retrieve_src_pdo(port);
+	usb_pd_pm_select_default_5v(port);
 
-	 usb_pd_pm_select_default_5v(port);
-#endif
-#if 0
-	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
-	uint8_t num_offered_pdos;
-	uint8_t src_pdo_idx;
-	uint8_t *pdo_data = dev->rx_msg_buf;
-	uint32_t pdo;
-	pdo_offer_t offer[2];
-	uint8_t     offer_idx = 0;
-	pdo_offer_t *selected_offer;
-	pdo_offer_t *new_offer;
-
-	// Divide the Rx'd msg length by 4 to get the number of source PDOs offered.
-	num_offered_pdos = dev->rx_msg_data_len >> 2;
-
-	dev->rx_src_pdo_num = num_offered_pdos;
-
-	// Initialize RDO object position to zero (invalid value).
-	dev->object_position = 0;
-
-	// Initialize offer pointers.
-	new_offer = &offer[offer_idx];
-	selected_offer = NULL;
-
-	// Evaluate each PDO offered in source caps.
-	for (src_pdo_idx = 0; src_pdo_idx < num_offered_pdos; src_pdo_idx++)
-	{
-		// Using get_data_object() instead of casting to 32-bit pointer 
-		// in case pdo_data pointer is not 4-byte aligned.
-		pdo = get_data_object(&pdo_data[src_pdo_idx << 2]);
-		dev->rx_src_pdo[src_pdo_idx].pdo = pdo;
-
-		INFO("PDO[%u] = 0x%08x\n", src_pdo_idx, pdo);
-
-		if (src_pdo_idx == 0)
-		{
-			dev->remote_externally_powered = (pdo & PDO_EXTERNALLY_POWERED_BIT) ? true : false;
-			INFO("Remote SRC_CAPS externally powered bit is %s.\n", (dev->remote_externally_powered) ? "set" : "not set");
-		}
-
-		// Extract the offer params from the source PDO.
-		new_offer->supply_type = (enum supply_type_t)PDO_SUPPLY_TYPE(pdo);
-
-		if (new_offer->supply_type == SUPPLY_TYPE_AUGMENTED){
-		    dev->apdo_idx = src_pdo_idx;
-		    adapter.pps_supported = true;
-		}
-
-		CRIT("PDO-%u %s, ", src_pdo_idx + 1, 
-			 (new_offer->supply_type == SUPPLY_TYPE_FIXED) ? "Fixed" : 
-			 (new_offer->supply_type == SUPPLY_TYPE_VARIABLE) ? "Vari" :
-			 (new_offer->supply_type == SUPPLY_TYPE_BATTERY) ? "Batt" : "PPS");
-
-		CRIT("%u - ", PDO_VOLT_TO_MV(new_offer->min_voltage));
-		CRIT("%u mV, ", PDO_VOLT_TO_MV(new_offer->max_voltage));
-		CRIT("%u mA, ", PDO_CURR_TO_MA(new_offer->max_current));
-		CRIT("%u mW\n", PDO_PWR_TO_MW(new_offer->max_power));
-	} /* End: Source PDO loop */
-
-	if (selected_offer == NULL)
-	{
-		// No acceptable PDO was found. Use first PDO (vSafe5V).
-		dev->object_position = 1;
-		dev->selected_pdo = get_data_object(&pdo_data[0]);
-		dev->selected_snk_pdo_idx = 0;
-	}
-	CRIT("PDO-%u 0x%08x selected\n", dev->object_position, dev->selected_pdo);
-
-#endif
 	return;
 }
-
-
-
 
 void usb_pd_pm_evaluate_pps_status(unsigned int port)
 {
@@ -538,164 +403,12 @@ static void usb_pd_pm_switch_to_ardo(unsigned int port)
 {
 	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
 
-	pm_state.request_volt = pm_state.bq2597x.vbat_volt * 215 / 100;
-	pm_state.request_current = 3000;
+	pm_state.request_volt = pm_state.bq2597x.vbat_volt * 2 + 300;
+	pm_state.request_current = dev->apdo_max_curr;
 
 	dev->selected_pdo = dev->rx_src_pdo[dev->apdo_idx].pdo;
 	dev->object_position = dev->apdo_idx + 1;
 }
-
-#if 0
-/*Normal PD mode */
-static void usb_pd_pm_switch_to_rdo(unsigned int port)
-{
-    usb_pd_port_config_t *config = usb_pd_pm_get_config(port);
-    usb_pd_port_t *dev = usb_pd_pe_get_device(port);
-    uint8_t snk_pdo_idx;
-    uint8_t src_pdo_idx;
-    uint32_t pdo;
-    bool acceptable_pdo;
-    pdo_offer_t offer[2];
-    uint8_t     offer_idx = 0;
-    pdo_offer_t *selected_offer;
-    pdo_offer_t *new_offer;
-
-    // Initialize RDO object position to zero (invalid value).
-    dev->object_position = 0;
-
-    // Initialize offer pointers.
-    new_offer = &offer[offer_idx];
-    selected_offer = NULL;
-
-    // Evaluate each PDO offered in source caps.
-    for (src_pdo_idx = 0; src_pdo_idx < dev->rx_src_pdo_num; src_pdo_idx++)
-    {
-        pdo = dev->rx_src_pdo[src_pdo_idx].pdo;
-
-        // Extract the offer params from the source PDO.
-        new_offer->supply_type = (enum supply_type_t)PDO_SUPPLY_TYPE(pdo);
-
-        if (new_offer->supply_type == SUPPLY_TYPE_AUGMENTED)
-            continue;
-
-        new_offer->min_voltage = PDO_MIN_VOLTAGE(pdo);
-
-        if (new_offer->supply_type == SUPPLY_TYPE_FIXED)
-        {
-            new_offer->max_voltage = new_offer->min_voltage;
-        }
-        else
-        {
-            new_offer->max_voltage = PDO_MAX_VOLTAGE(pdo);
-        }
-
-        if (new_offer->supply_type == SUPPLY_TYPE_BATTERY)
-        {
-            new_offer->max_power = PDO_MAX_CURRENT_OR_POWER(pdo);
-            new_offer->max_current = calc_current(new_offer->max_power, new_offer->max_voltage);
-        }
-        else
-        {
-            new_offer->max_current = PDO_MAX_CURRENT_OR_POWER(pdo);
-            new_offer->max_power = calc_power(new_offer->max_voltage, new_offer->max_current);
-        }
-
-        CRIT("PDO-%u %s, ", src_pdo_idx + 1,
-             (new_offer->supply_type == SUPPLY_TYPE_FIXED) ? "Fixed" :
-             (new_offer->supply_type == SUPPLY_TYPE_VARIABLE) ? "Vari" : "Batt");
-        CRIT("%u - ", PDO_VOLT_TO_MV(new_offer->min_voltage));
-        CRIT("%u mV, ", PDO_VOLT_TO_MV(new_offer->max_voltage));
-        CRIT("%u mA, ", PDO_CURR_TO_MA(new_offer->max_current));
-        CRIT("%u mW\n", PDO_PWR_TO_MW(new_offer->max_power));
-
-        for (snk_pdo_idx = 0; snk_pdo_idx < config->num_snk_pdos; snk_pdo_idx++)
-        {
-            // Make sure the SrcCap and SinkCap supply type match:
-            // A Fixed Supply SinkCap PDO can only consider a Fixed Supply SrcCap PDO
-            // A Variable Supply SinkCap PDO can consider a Fixed or Variable Supply SrcCap PDO
-            // A Battery Supply SinkCap PDO can consider any Supply SrcCap PDO
-            if (config->snk_caps[snk_pdo_idx].SupplyType == SUPPLY_TYPE_AUGMENTED)
-                continue;
-
-            if ((new_offer->supply_type != config->snk_caps[snk_pdo_idx].SupplyType) &&
-                (config->snk_caps[snk_pdo_idx].SupplyType != SUPPLY_TYPE_BATTERY) &&
-                ((new_offer->supply_type == SUPPLY_TYPE_BATTERY) &&
-                 (config->snk_caps[snk_pdo_idx].SupplyType == SUPPLY_TYPE_VARIABLE)))
-            {
-                continue;
-            }
-
-            if (config->snk_caps[snk_pdo_idx].SupplyType == SUPPLY_TYPE_FIXED)
-            {
-                config->snk_caps[snk_pdo_idx].MaxV = config->snk_caps[snk_pdo_idx].MinV;
-            }
-
-            acceptable_pdo = false;
-
-            // Determine whether PDO is acceptable.
-            if ((new_offer->max_voltage <= config->snk_caps[snk_pdo_idx].MaxV) &&
-                (new_offer->min_voltage >= config->snk_caps[snk_pdo_idx].MinV))
-            {
-                if (config->snk_caps[snk_pdo_idx].SupplyType == SUPPLY_TYPE_BATTERY)
-                {
-                    if (new_offer->max_power >= config->snk_caps[snk_pdo_idx].OperationalPower)
-                    {
-                        acceptable_pdo = true;
-
-                        // Check for capability mismatch.
-                        new_offer->cap_mismatch = (new_offer->max_power < config->snk_caps[snk_pdo_idx].MaxOperatingPower) ? true : false;
-                    }
-                }
-                else /* Fixed or Variable Sink Cap */
-                {
-                    if (new_offer->max_current >= config->snk_caps[snk_pdo_idx].OperationalCurrent)
-                    {
-                        acceptable_pdo = true;
-
-                        // Check for capability mismatch.
-                        new_offer->cap_mismatch = (new_offer->max_current < config->snk_caps[snk_pdo_idx].MaxOperatingCurrent) ? true : false;
-                    }
-                }
-            }
-
-            // Select this PDO if
-            // Firstly, it is acceptable
-            // [AND] Secondly,
-            // no PDO has been selected yet [OR]
-            // the capability is a better match  [OR]
-            // it is a better offer based on user-defined priority.
-            if (acceptable_pdo &&
-                ((selected_offer == NULL) ||
-                 (selected_offer->cap_mismatch && !new_offer->cap_mismatch) ||
-                  better_offer(new_offer, selected_offer, config->pdo_priority)))
-            {
-                selected_offer = new_offer;
-                dev->selected_pdo = pdo;
-                dev->object_position = src_pdo_idx + 1;
-                dev->selected_snk_pdo_idx = snk_pdo_idx;
-
-                // Switch pointer to current offer.
-                offer_idx ^= 1;
-                new_offer = &offer[offer_idx];
-            }
-        } /* End: Sink PDO loop */
-    } /* End: Source PDO loop */
-
-    if (selected_offer == NULL)
-    {
-        // No acceptable PDO was found. Use first PDO (vSafe5V).
-        dev->object_position = 1;
-        dev->selected_pdo = dev->rx_src_pdo[0].pdo;
-        dev->selected_snk_pdo_idx = 0;
-    }
-
-    CRIT("PDO-%u 0x%08x selected\n", dev->object_position, dev->selected_pdo);
-    DEBUG("selected_snk_pdo_idx: %u\n", dev->selected_snk_pdo_idx);
-
-    return;
-
-}
-#endif
 
 static uint8_t get_volt_increase_steps(uint16_t vbat)
 {
@@ -704,39 +417,57 @@ static uint8_t get_volt_increase_steps(uint16_t vbat)
 
 static int usb_pd_pm_maxchg4_charge(unsigned int port)
 {
-    int steps = 0;
-
-    if (pm_state.bq2597x.ibat_curr < sys_config.bq2597x.bat_ocp_alarm_th - 900)
-        steps = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
-    else if (pm_state.bq2597x.ibat_curr > sys_config.bq2597x.bat_ocp_alarm_th - 800)
-        steps = sys_config.max4_policy.down_steps;
+    int steps;
+    int sw_ctrl_steps = 0;
+    int hw_ctrl_steps = 0;
+    int step_vbat = 0;
+    int step_vbus = 0;
+    int step_ibus = 0;
+    int step_ibat = 0;
 
     if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_alarm_th)
-        steps = sys_config.max4_policy.down_steps;
+	step_vbat = sys_config.max4_policy.down_steps;
+    else if (pm_state.bq2597x.vbat_volt < sys_config.bq2597x.bat_ovp_alarm_th - 5)
+	step_vbat = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
 
-    if (pm_state.bq2597x.vbus_volt > sys_config.bq2597x.bus_ovp_alarm_th - 20)
-        steps = sys_config.max4_policy.down_steps;
+    if (pm_state.bq2597x.ibat_curr < sys_config.bq2597x.bat_ocp_alarm_th - 900)
+        step_ibat = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
+    else if (pm_state.bq2597x.ibat_curr > sys_config.bq2597x.bat_ocp_alarm_th - 800)
+        step_ibat = sys_config.max4_policy.down_steps;
+
+    if (pm_state.bq2597x.ibus_curr < sys_config.bq2597x.bus_ocp_alarm_th)
+	step_ibus = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
+    else if (pm_state.bq2597x.ibus_curr > sys_config.bq2597x.bus_ocp_alarm_th + 50)
+	step_ibus = sys_config.max4_policy.down_steps;
+
+    if (pm_state.bq2597x.vbus_volt < sys_config.bq2597x.bus_ovp_alarm_th)
+	step_vbus = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
+    else if (pm_state.bq2597x.vbus_volt > sys_config.bq2597x.bus_ovp_alarm_th + 20)
+	step_vbus = sys_config.max4_policy.down_steps;
+
+    sw_ctrl_steps = min(min(min(step_vbat, step_vbus), step_ibus), step_ibat);
 
     if (pm_state.bq2597x.bat_ocp_alarm /*|| pm_state.bq2597x.bat_ovp_alarm */|| pm_state.bq2597x.bus_ocp_alarm
             || pm_state.bq2597x.bus_ovp_alarm /*|| pm_state.bq2597x.tbat_temp > 60 || pm_state.bq2597x.tbus_temp > 50*/) {
-        steps = sys_config.max4_policy.down_steps;
+        hw_ctrl_steps = sys_config.max4_policy.down_steps;
+    } else {
+	hw_ctrl_steps = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
     }
 
-#if 1
     if (pm_state.bq2597x.bat_therm_fault ) // battery overheat, stop charge
         return -1;
     else if (pm_state.bq2597x.bus_therm_fault || pm_state.bq2597x.die_therm_fault)
         return -2; // goto switch mode, and never go to flash charge
-    else if (pm_state.bq2597x.bat_ocp_fault || pm_state.bq2597x.bus_ocp_fault ||pm_state.bq2597x.bat_ovp_fault || pm_state.bq2597x.bus_ovp_fault) {
-//        steps = sys_config.max4_policy.down_steps * 2;
+    else if (pm_state.bq2597x.bat_ocp_fault || pm_state.bq2597x.bus_ocp_fault ||pm_state.bq2597x.bat_ovp_fault || pm_state.bq2597x.bus_ovp_fault)
         return 2; // go to switch, and try to ramp up if ok
-    }
-#endif
+
     if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_alarm_th - 50 &&
             pm_state.bq2597x.ibat_curr < sys_config.bq2597x.bat_ucp_alarm_th)
         return 1; // goto switch, never go to flash charge
 
-    //pm_state.request_volt = adapter.volt + steps * 20;
+
+    steps = min(sw_ctrl_steps, hw_ctrl_steps);
+
     pm_state.request_volt = pm_state.request_volt + steps * 20;
 
     if (pm_state.request_volt < pm_state.bq2597x.vbat_volt * 2)
@@ -762,7 +493,7 @@ const unsigned char *pm_state_str[] = {
 
 static void usb_pd_pm_move_state(pm_sm_state_t state)
 {
-    pr_err("pm_state change:%s -> %s\n", 
+    pr_debug("pm_state change:%s -> %s\n", 
 		pm_state_str[pm_state.state], pm_state_str[state]);
 
     pm_state.state_log[pm_state.log_idx] = pm_state.state;
@@ -798,7 +529,7 @@ void usb_pd_pm_statemachine(unsigned int port)
         break;
 
     case PD_PM_STATE_ENTRY:
-	pr_err("PPS supported:%d, vbat_volt:%d\n", adapter.pps_supported, pm_state.bq2597x.vbat_volt);
+	pr_debug("PPS supported:%d, vbat_volt:%d\n", adapter.pps_supported, pm_state.bq2597x.vbat_volt);
         if (!adapter.pps_supported 
 		|| pm_state.bq2597x.vbat_volt < sys_config.min_vbat_start_maxchg4
                 || pm_state.sw_from_maxchg4)
@@ -826,12 +557,9 @@ void usb_pd_pm_statemachine(unsigned int port)
 
     case PD_PM_STATE_SW_ENTRY_2:
         if (*dev->current_state == PE_SNK_READY){
-            //usb_pd_pm_switch_to_rdo(port);
-           // usb_pd_pm_evaluate_src_caps(port);
             usb_pd_pm_select_default_5v(port);
            // Build RDO based on policy manager response.
             usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
-//            pm_run_pe_sm = true;
             usb_pd_pm_move_state(PD_PM_STATE_SW_LOOP);
         }
         break;
@@ -902,21 +630,14 @@ void usb_pd_pm_statemachine(unsigned int port)
                 usb_pd_pm_move_state(PD_PM_STATE_STOP_CHARGE);
                 break;
             } else if (ret == -2 || ret == 1) {
-		pr_err(" return to switch charge, reason:%d\n", ret);
-		pr_err(" bus_therm_fault:%d, die_therm_fault:%d\n", pm_state.bq2597x.bus_therm_fault,
-								    pm_state.bq2597x.die_therm_fault);
-		pr_err(" bus_temp:%d, die_temp:%d\n", pm_state.bq2597x.bus_temp, pm_state.bq2597x.die_temp);
-
                 usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY);
                 pm_state.sw_from_maxchg4 = true;
                 break;
             } else if (ret == 2) {
-		pr_err(" return to switch charge, reason:%d\n", ret);
                 usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY);
             } else {// normal tune adapter output
                 usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
                 usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_GET_PPS_STATUS);
-//                pm_run_pe_sm = true;
             }
         }
         break;

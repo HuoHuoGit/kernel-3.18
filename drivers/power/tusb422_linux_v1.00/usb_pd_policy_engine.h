@@ -311,6 +311,9 @@ typedef struct
 	uint8_t             object_position;  /* Range: 1 - 7 */
 	uint8_t             selected_snk_pdo_idx;
 	uint8_t		    apdo_idx;	/* if src has PPS support, it tracks PPS PDO index */
+	uint32_t	    apdo_max_volt;
+	uint32_t	    apdo_max_curr;
+
 	uint32_t            rdo;
 	uint32_t            selected_pdo;
 	uint32_t            prev_selected_pdo;
