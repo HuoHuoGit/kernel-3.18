@@ -935,7 +935,7 @@ static int bq2597x_get_adc_data(struct bq2597x *bq, int channel,  int *result)
 {
 	int ret;
 	u16 val;
-	u16 t;
+	s16 t;
 
 	if (channel > ADC_MAX_NUM)
 		return -EINVAL;
@@ -946,7 +946,7 @@ static int bq2597x_get_adc_data(struct bq2597x *bq, int channel,  int *result)
 	t = val & 0xFF;
 	t <<= 8;
 	t |= (val >> 8) & 0xFF; 
-	*result = (int)t;
+	*result = t;
 
 	return 0;
 }
