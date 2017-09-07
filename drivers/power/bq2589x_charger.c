@@ -1157,12 +1157,12 @@ static int bq2589x_init_device(struct bq2589x *bq)
 		pr_err("Failed to set boost current:%d\n", ret);
 	}
 
-	ret = bq2589x_disable_charger(bq);
+	ret = bq2589x_enable_charger(bq);
 	if (ret < 0) {
-		pr_err("Failed to disable charger:%d\n",  ret);
+		pr_err("Failed to enable charger:%d\n",  ret);
 		return ret;
 	} else {
-		bq->charge_enabled = false;
+		bq->charge_enabled = true;
 	}
 
 	if (pe.enable) {
@@ -1329,7 +1329,9 @@ static int bq2589x_charger_get_property(struct power_supply *psy,
 {
 
 	struct bq2589x *bq = container_of(psy, struct bq2589x, batt_psy);
-	//int ret;
+	int ret;
+	u8 hiz;
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
 		val->intval = bq2589x_get_prop_charge_type(bq);
@@ -1342,6 +1344,11 @@ static int bq2589x_charger_get_property(struct power_supply *psy,
 		val->intval = bq2589x_get_prop_charge_status(bq);
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
+		break;
+	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
+		ret = bq2589x_get_hiz_mode(bq, &hiz);
+		if (!ret)
+			val->intval = hiz;
 		break;
 		
 	default:
@@ -1363,7 +1370,12 @@ static int bq2589x_charger_set_property(struct power_supply *psy,
 		bq2589x_charging_disable(bq, USER, !val->intval);
 		power_supply_changed(&bq->batt_psy);
 		break;
-
+	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
+		if (val->intval)
+			bq2589x_enter_hiz_mode(bq);
+		else
+			bq2589x_exit_hiz_mode(bq);
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1377,6 +1389,7 @@ static int bq2589x_charger_is_writeable(struct power_supply *psy,
 
 	switch(prop) {
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
 		ret = 1;
 		break;
 	default:
@@ -1941,13 +1954,16 @@ static void bq2589x_adapter_in_handler(struct bq2589x *bq)
 
 	if (update_profile) 
 		bq2589x_update_charging_profile(bq);
-		
-	ret = bq2589x_force_ico(bq);
-	if (!ret) {
-		schedule_delayed_work(&bq->ico_work, 2 * HZ);
-		pr_info("Force ICO successfully\n");
-	} else {
-		pr_err("Force ICO failed\n");
+
+	if (bq->usb_type == POWER_SUPPLY_TYPE_USB_DCP ||
+		bq->usb_type == POWER_SUPPLY_TYPE_USB_HVDCP) {
+		ret = bq2589x_force_ico(bq);
+		if (!ret) {
+			schedule_delayed_work(&bq->ico_work, 2 * HZ);
+			pr_info("Force ICO successfully\n");
+		} else {
+			pr_err("Force ICO failed\n");
+		}
 	}
 
 	cancel_delayed_work(&bq->discharge_jeita_work);

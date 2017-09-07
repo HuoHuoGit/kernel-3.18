@@ -165,9 +165,9 @@ static void usb_pd_pm_update_sw_status(void)
 		}
 	}
 
-	ret = pm_state.sw_psy->get_property(pm_state.sw_psy, POWER_SUPPLY_PROP_CHARGE_ENABLED, &val);
+	ret = pm_state.sw_psy->get_property(pm_state.sw_psy, POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
 	if (!ret)
-		pm_state.bq2589x.charge_enabled = val.intval;
+		pm_state.bq2589x.charge_enabled = !val.intval;
 
 
 }
@@ -276,15 +276,15 @@ static int usb_pd_pm_enable_sw(bool enable)
 	union power_supply_propval val = {0,};
 
 	if (!pm_state.sw_psy) {
-		pm_state.sw_psy = power_supply_get_by_name("bq2597x");
+		pm_state.sw_psy = power_supply_get_by_name("bq2589x");
 		if (!pm_state.sw_psy) {
 			return -ENODEV;
 		}
 	}
 
-	val.intval = enable;
+	val.intval = !enable;
 	ret = pm_state.sw_psy->set_property(pm_state.sw_psy, 
-			POWER_SUPPLY_PROP_CHARGING_ENABLED, &val);
+			POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
 	
 	return ret;
 }
@@ -322,9 +322,9 @@ static int usb_pd_pm_check_sw_enabled(void)
 	}
 
 	ret = pm_state.sw_psy->get_property(pm_state.sw_psy, 
-			POWER_SUPPLY_PROP_CHARGING_ENABLED, &val);
+			POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
 	if (!ret)
-		pm_state.bq2589x.charge_enabled = !!val.intval;
+		pm_state.bq2589x.charge_enabled = !val.intval;
 	
 	return ret;
 }
@@ -538,10 +538,12 @@ void usb_pd_pm_statemachine(unsigned int port)
             usb_pd_pm_enable_fc(false);
             usb_pd_pm_check_fc_enabled();
         }
+#if 0	
         if (pm_state.bq2589x.charge_enabled) {
             usb_pd_pm_enable_sw(false);
 	    usb_pd_pm_check_sw_enabled();
         }
+#endif
         pm_state.sw_from_maxchg4 = false;
         break;
 
@@ -564,6 +566,7 @@ void usb_pd_pm_statemachine(unsigned int port)
             usb_pd_pm_enable_fc(false);
             usb_pd_pm_check_fc_enabled();
         }
+
         if (!pm_state.bq2597x.charge_enabled) {
             usb_pd_pm_enable_sw(true);
 	    usb_pd_pm_check_sw_enabled();
