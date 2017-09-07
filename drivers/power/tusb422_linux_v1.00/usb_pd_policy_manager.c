@@ -69,9 +69,9 @@
 #define SRC_PDO_UNCHUNKED_EXT_MSG_SUP_BIT ((uint32_t)0x01 << 24)
 
 
-#define BATT_MAX_CHG_VOLT		4200
-#define BATT_MAX_CHG_CURR		4500
-#define	BUS_OVP_THRESHOLD		10000
+#define BATT_MAX_CHG_VOLT		4400
+#define BATT_MAX_CHG_CURR		6000
+#define	BUS_OVP_THRESHOLD		12000
 #define	BUS_OVP_ALARM_THRESHOLD		9500
 
 
@@ -91,9 +91,10 @@ static const struct sys_config sys_config = {
 	.bq2597x.bat_ucp_alarm_th	= 2000,
 
 	.bq2597x.sw_bat_ovp_th		= BATT_MAX_CHG_VOLT, 
-	.bq2597x.sw_bat_ocp_th		= BATT_MAX_CHG_CURR,
+	.bq2597x.sw_bat_ocp_th		= BATT_MAX_CHG_CURR + 1000,
 	.bq2597x.sw_bus_ovp_th		= BUS_OVP_ALARM_THRESHOLD,
-	.bq2597x.sw_bus_ocp_th		= (BATT_MAX_CHG_CURR >> 1) + 500,
+	.bq2597x.sw_bus_ocp_th		= BATT_MAX_CHG_CURR >> 1,
+
 	.bq2597x.sw_bat_ucp_th		= 2000,
 
 	.max4_policy.down_steps = -1,
@@ -414,7 +415,7 @@ static void usb_pd_pm_switch_to_ardo(unsigned int port)
 	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
 
 	pm_state.request_volt = pm_state.bq2597x.vbat_volt * 2 + BUS_VOLT_INIT_UP;
-	pm_state.request_current = dev->apdo_max_curr;
+	pm_state.request_current = min(dev->apdo_max_curr, pm_state.target_current);
 
 	dev->selected_pdo = dev->rx_src_pdo[dev->apdo_idx].pdo;
 	dev->object_position = dev->apdo_idx + 1;
@@ -427,14 +428,25 @@ static uint8_t get_volt_increase_steps(uint16_t vbat)
 
 static int usb_pd_pm_maxchg4_charge(unsigned int port)
 {
+    usb_pd_port_t *dev = usb_pd_pe_get_device(port);
+
     int steps;
     int sw_ctrl_steps = 0;
     int hw_ctrl_steps = 0;
     int step_vbat = 0;
-    int step_vbus = 0;
+/*    int step_vbus = 0;*/
     int step_ibus = 0;
     int step_ibat = 0;
+    static int ibus_limit;
 
+    if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.sw_bat_ovp_th - 100)
+	ibus_limit = pm_state.target_current * 90 / 100;
+    else if (pm_state.bq2597x.vbat_volt < sys_config.bq2597x.sw_bat_ovp_th - 300)
+	ibus_limit = pm_state.target_current * 110 / 100;
+ 
+    if (ibus_limit == 0)
+	ibus_limit = pm_state.target_current * 110 / 100;
+	
     if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.sw_bat_ovp_th)
 	step_vbat = sys_config.max4_policy.down_steps;
     else if (pm_state.bq2597x.vbat_volt < sys_config.bq2597x.sw_bat_ovp_th - 5)
@@ -448,20 +460,24 @@ static int usb_pd_pm_maxchg4_charge(unsigned int port)
     if (pm_state.bq2597x.ibat_curr < 0)
 	pr_debug("ibat_curr:%d\n", pm_state.bq2597x.ibat_curr);
 
-    if (pm_state.bq2597x.ibus_curr < sys_config.bq2597x.sw_bus_ocp_th)
+    if (pm_state.bq2597x.ibus_curr < ibus_limit + 50)
 	step_ibus = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
-    else if (pm_state.bq2597x.ibus_curr > sys_config.bq2597x.sw_bus_ocp_th + 50)
+    else if (pm_state.bq2597x.ibus_curr > ibus_limit + 100)
 	step_ibus = sys_config.max4_policy.down_steps;
-
+#if 0
     if (pm_state.bq2597x.vbus_volt < sys_config.bq2597x.sw_bus_ovp_th)
 	step_vbus = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
     else if (pm_state.bq2597x.vbus_volt > sys_config.bq2597x.sw_bus_ovp_th + 20)
 	step_vbus = sys_config.max4_policy.down_steps;
+#endif
+    sw_ctrl_steps = min(min(step_vbat, step_ibus), step_ibat);
 
-    sw_ctrl_steps = min(min(min(step_vbat, step_vbus), step_ibus), step_ibat);
-
-    if (pm_state.bq2597x.bat_ocp_alarm /*|| pm_state.bq2597x.bat_ovp_alarm */|| pm_state.bq2597x.bus_ocp_alarm
-            || pm_state.bq2597x.bus_ovp_alarm /*|| pm_state.bq2597x.tbat_temp > 60 || pm_state.bq2597x.tbus_temp > 50*/) {
+    if (pm_state.bq2597x.bat_ocp_alarm 
+		/*|| pm_state.bq2597x.bat_ovp_alarm */
+		|| pm_state.bq2597x.bus_ocp_alarm
+		|| pm_state.bq2597x.bus_ovp_alarm 
+		/*|| pm_state.bq2597x.tbat_temp > 60 
+		  || pm_state.bq2597x.tbus_temp > 50*/) {
         hw_ctrl_steps = sys_config.max4_policy.down_steps;
     } else {
 	hw_ctrl_steps = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
@@ -469,9 +485,13 @@ static int usb_pd_pm_maxchg4_charge(unsigned int port)
 
     if (pm_state.bq2597x.bat_therm_fault ) // battery overheat, stop charge
         return -1;
-    else if (pm_state.bq2597x.bus_therm_fault || pm_state.bq2597x.die_therm_fault)
+    else if (pm_state.bq2597x.bus_therm_fault 
+		|| pm_state.bq2597x.die_therm_fault)
         return -2; // goto switch mode, and never go to flash charge
-    else if (pm_state.bq2597x.bat_ocp_fault || pm_state.bq2597x.bus_ocp_fault ||pm_state.bq2597x.bat_ovp_fault || pm_state.bq2597x.bus_ovp_fault)
+    else if (pm_state.bq2597x.bat_ocp_fault 
+		|| pm_state.bq2597x.bus_ocp_fault 
+		||pm_state.bq2597x.bat_ovp_fault 
+		|| pm_state.bq2597x.bus_ovp_fault)
         return 2; // go to switch, and try to ramp up if ok
 
     if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_alarm_th - 50 &&
@@ -481,13 +501,16 @@ static int usb_pd_pm_maxchg4_charge(unsigned int port)
 
     steps = min(sw_ctrl_steps, hw_ctrl_steps);
 
-    pr_debug("step_vbat=%d, step_ibat=%d, step_ibus = %d, step_vbus =%d, hw_ctrl_steps=%d, adjust step= %d\n", 
-		step_vbat, step_ibat, step_ibus, step_vbus, hw_ctrl_steps, steps);
+    pr_debug("step_vbat=%d, step_ibat=%d, step_ibus = %d, hw_ctrl_steps=%d, adjust step= %d\n", 
+		step_vbat, step_ibat, step_ibus,hw_ctrl_steps, steps);
 
     pm_state.request_volt = pm_state.request_volt + steps * 20;
 
-    if (pm_state.request_volt < pm_state.bq2597x.vbat_volt * 2)
-        pm_state.request_volt = pm_state.bq2597x.vbat_volt * 2 + 40; //cable loss
+    if (pm_state.request_volt > dev->apdo_max_volt)
+	pm_state.request_volt = dev->apdo_max_volt;
+
+    if (pm_state.request_volt > adapter.volt + 500)
+	pm_state.request_volt = adapter.volt + 500;
 
     return 0;
 }
@@ -653,7 +676,7 @@ void usb_pd_pm_statemachine(unsigned int port)
 
         if (*dev->current_state == PE_SNK_READY) {
             ret = usb_pd_pm_maxchg4_charge(port);
-//	    pr_err("usb_pd_pm_maxchg4_charge ret:%d\n", ret);
+	    pr_err("usb_pd_pm_maxchg4_charge ret:%d\n", ret);
             if (ret == -1) {
                 usb_pd_pm_move_state(PD_PM_STATE_STOP_CHARGE);
                 break;
@@ -989,6 +1012,7 @@ void usb_pd_init(const usb_pd_port_config_t *port_config)
 	pm_state.fc_psy = power_supply_get_by_name("bq2597x");
 	pm_state.sw_psy = power_supply_get_by_name("bq2589x");
 
+	pm_state.target_current = sys_config.bq2597x.sw_bus_ocp_th;
 
 	INIT_DELAYED_WORK(&pm_state.pm_work, usb_pd_pm_workfunc);
 

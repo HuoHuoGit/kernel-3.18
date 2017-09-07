@@ -573,7 +573,7 @@
 			ti,bq2589x,enable-12v;
 			ti,bq2589x,enable-hvdcp;
 					
-			ti,bq2589x,charge-voltage = <4200>;
+			ti,bq2589x,charge-voltage = <4400>;
 			ti,bq2589x,charge-current = <2000>;
 
 			ti,bq2589x,precharge-current = <256>;
@@ -623,15 +623,15 @@
 			ti,bq2597x,bus-therm-disable;	
 			ti,bq2597x,die-therm-disable;	
 
-			ti,bq2597x,bat-ovp-threshold = <4350>;
-			ti,bq2597x,bat-ovp-alarm-threshold = <4200>;
-			ti,bq2597x,bat-ocp-threshold = <8100>;
-			ti,bq2597x,bat-ocp-alarm-threshold = <8000>;
+			ti,bq2597x,bat-ovp-threshold = <4500>;
+			ti,bq2597x,bat-ovp-alarm-threshold = <4400>;
+			ti,bq2597x,bat-ocp-threshold = <8000>;
+			ti,bq2597x,bat-ocp-alarm-threshold = <7000>;
 
-			ti,bq2597x,bus-ovp-threshold = <8900>;
-			ti,bq2597x,bus-ovp-alarm-threshold = <8800>;
-			ti,bq2597x,bus-ocp-threshold = <4250>;
-			ti,bq2597x,bus-ocp-alarm-threshold = <4000>;
+			ti,bq2597x,bus-ovp-threshold = <12000>;
+			ti,bq2597x,bus-ovp-alarm-threshold = <11000>;
+			ti,bq2597x,bus-ocp-threshold = <3750>;
+			ti,bq2597x,bus-ocp-alarm-threshold = <3500>;
 
 			ti,bq2597x,bat-ucp-alarm-threshold = <2000>;
 
@@ -639,7 +639,7 @@
 			ti,bq2597x,bus-therm-threshold = <0x15>;/*4.1%*/
 			ti,bq2597x,die-therm-threshold = <125>;
 
-			ti,bq2597x,ac-ovp-threshold = <11>;
+			ti,bq2597x,ac-ovp-threshold = <12>;
 		};
 
 

@@ -1919,9 +1919,9 @@ static void bq2589x_adapter_in_handler(struct bq2589x *bq)
 
 	switch (bq->usb_type) {
 	case POWER_SUPPLY_TYPE_USB:
-		bq->icl_ma = 500;
+		bq->icl_ma = 2000;
 		bq->ivl_mv = 4600;
-		bq->chg_ma = 500;
+		bq->chg_ma = 2000;
 		break;
 	case POWER_SUPPLY_TYPE_USB_CDP:
 		bq->icl_ma = 1500;

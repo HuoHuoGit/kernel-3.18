@@ -158,9 +158,12 @@ typedef struct {
     bool        sw_from_maxchg4;
     bool        sw_near_cv;
 
+    /* for RDO build */
     uint16_t    request_volt;
     uint16_t    request_current;
 
+    uint16_t	target_current;
+    
     pm_sm_state_t     state; //state machine
 
     pm_sm_state_t state_log[PM_STATE_LOG_MAX];
