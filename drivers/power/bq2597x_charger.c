@@ -1311,7 +1311,7 @@ static int bq2597x_init_adc(struct bq2597x *bq)
 	bq2597x_set_adc_average(bq, true);
 	bq2597x_set_adc_scan(bq, ADC_IBUS, true);
 	bq2597x_set_adc_scan(bq, ADC_VBUS, true);
-	bq2597x_set_adc_scan(bq, ADC_VOUT, true);
+	bq2597x_set_adc_scan(bq, ADC_VOUT, false);
 	bq2597x_set_adc_scan(bq, ADC_VBAT, true);
 	bq2597x_set_adc_scan(bq, ADC_IBAT, true);
 	bq2597x_set_adc_scan(bq, ADC_TBUS, true);
@@ -1646,7 +1646,9 @@ static void bq2597x_update_status(struct bq2597x *bq)
 
 	mutex_lock(&bq->data_lock);
 	/*read to clear alarm flag*/
-	bq2597x_read_byte(bq, BQ2597X_REG_0E, &flag);
+	ret = bq2597x_read_byte(bq, BQ2597X_REG_0E, &flag);
+	if (!ret && flag)
+		pr_err("INT_FLAG =0x%02X\n", flag);
 
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_0D, &stat);
 	if (!ret && stat != bq->prev_alarm) {
@@ -1660,6 +1662,10 @@ static void bq2597x_update_status(struct bq2597x *bq)
 		bq->vbus_present  = !!(stat & VBUS_INSERT);
 		bq->bat_ucp_alarm = !!(stat & BAT_UCP_ALARM);
 	}
+
+	ret = bq2597x_read_byte(bq, BQ2597X_REG_10, &stat);
+	if (!ret && stat)
+		pr_err("FAULT_STAT = 0x%02X\n", stat);
 
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_11, &flag);
 	if (!ret && flag != bq->prev_fault) {

@@ -26,12 +26,12 @@ typedef enum  {
     PD_PM_STATE_SW_ENTRY,
     PD_PM_STATE_SW_ENTRY_2,
     PD_PM_STATE_SW_LOOP,
-    PD_PM_STATE_MAXCHG4_ENTRY,
-    PD_PM_STATE_MAXCHG4_ENTRY_1,
-    PD_PM_STATE_MAXCHG4_ENTRY_2,
-    PD_PM_STATE_MAXCHG4_ENTRY_3,
-    PD_PM_STATE_MAXCHG4_GET_PPS_STATUS,
-    PD_PM_STATE_MAXCHG4_TUNE,
+    PD_PM_STATE_FLASH2_ENTRY,
+    PD_PM_STATE_FLASH2_ENTRY_1,
+    PD_PM_STATE_FLASH2_ENTRY_2,
+    PD_PM_STATE_FLASH2_ENTRY_3,
+    PD_PM_STATE_FLASH2_GET_PPS_STATUS,
+    PD_PM_STATE_FLASH2_TUNE,
     PD_PM_STATE_STOP_CHARGE,
 
 }pm_sm_state_t;
@@ -71,7 +71,7 @@ typedef enum  {
 #define	BAT_UCP_ALARM_MASK		(1 << BAT_UCP_ALARM_SHIFT)
 
 
-struct max4_policy {
+struct flash2_policy {
 	
 	int down_steps;
 	uint16_t volt_hysteresis;
@@ -102,6 +102,7 @@ struct bq2597x_cfg {
 	int32_t sw_bus_ocp_th;
 	int32_t sw_bat_ucp_th;
 
+	int32_t taper_current;
 };
 
 struct bq2589x {
@@ -154,8 +155,8 @@ struct bq2597x {
 #define PM_STATE_LOG_MAX    32
 typedef struct {
     bool        sw_is_charging;
-    bool        maxchg4_is_charging;
-    bool        sw_from_maxchg4;
+    bool        flash2_is_charging;
+    bool        sw_from_flash2;
     bool        sw_near_cv;
 
     /* for RDO build */
@@ -181,8 +182,8 @@ typedef struct {
 
 struct sys_config {
 	struct bq2597x_cfg bq2597x;
-	struct max4_policy max4_policy;
-	uint16_t min_vbat_start_maxchg4;
+	struct flash2_policy flash2_policy;
+	uint16_t min_vbat_start_flash2;
 };
 
 void usb_pd_pm_statemachine(unsigned int port);

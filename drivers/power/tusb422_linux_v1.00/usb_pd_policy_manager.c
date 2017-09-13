@@ -70,37 +70,23 @@
 
 
 #define BATT_MAX_CHG_VOLT		4400
-#define BATT_MAX_CHG_CURR		6000
+#define BATT_FAST_CHG_CURR		6000
 #define	BUS_OVP_THRESHOLD		12000
 #define	BUS_OVP_ALARM_THRESHOLD		9500
-
 
 #define BUS_VOLT_INIT_UP		200		
 
 static const struct sys_config sys_config = {
-	.bq2597x.bat_ovp_th		= BATT_MAX_CHG_VOLT + 100,
-	.bq2597x.bat_ocp_th		= BATT_MAX_CHG_CURR + 2000,
+	.bq2597x.bat_ovp_th		= BATT_MAX_CHG_VOLT,
+	.bq2597x.bat_ocp_th		= BATT_FAST_CHG_CURR + 1000,
 	.bq2597x.bus_ovp_th		= BUS_OVP_THRESHOLD,
-	.bq2597x.bus_ocp_th		= (BATT_MAX_CHG_CURR >> 1 ) + 750,
+	.bq2597x.bus_ocp_th		= BATT_FAST_CHG_CURR >> 1,
 
-	.bq2597x.bat_ovp_alarm_th	= BATT_MAX_CHG_VOLT,
-	.bq2597x.bat_ocp_alarm_th	= BATT_MAX_CHG_CURR + 1000,
-	.bq2597x.bus_ovp_alarm_th	= BUS_OVP_ALARM_THRESHOLD,
-	.bq2597x.bus_ocp_alarm_th	= (BATT_MAX_CHG_CURR >> 1 ) + 550,
+	.bq2597x.taper_current		= 2000,
+	.flash2_policy.down_steps = -1,
+	.flash2_policy.volt_hysteresis = 50,
 
-	.bq2597x.bat_ucp_alarm_th	= 2000,
-
-	.bq2597x.sw_bat_ovp_th		= BATT_MAX_CHG_VOLT, 
-	.bq2597x.sw_bat_ocp_th		= BATT_MAX_CHG_CURR + 1000,
-	.bq2597x.sw_bus_ovp_th		= BUS_OVP_ALARM_THRESHOLD,
-	.bq2597x.sw_bus_ocp_th		= BATT_MAX_CHG_CURR >> 1,
-
-	.bq2597x.sw_bat_ucp_th		= 2000,
-
-	.max4_policy.down_steps = -1,
-	.max4_policy.volt_hysteresis = 50,
-
-	.min_vbat_start_maxchg4 = 3500,
+	.min_vbat_start_flash2 = 3500,
 };
 
 static adapter_t adapter;
@@ -369,7 +355,6 @@ static void usb_pd_pm_retrieve_src_pdo(unsigned int port)
 			}
 		}
 	}
-
 }
 
 void usb_pd_pm_select_default_5v(unsigned int port)
@@ -426,7 +411,7 @@ static uint8_t get_volt_increase_steps(uint16_t vbat)
 	return 1;
 }
 
-static int usb_pd_pm_maxchg4_charge(unsigned int port)
+static int usb_pd_pm_flash2_charge(unsigned int port)
 {
     usb_pd_port_t *dev = usb_pd_pe_get_device(port);
 
@@ -439,37 +424,29 @@ static int usb_pd_pm_maxchg4_charge(unsigned int port)
     int step_ibat = 0;
     static int ibus_limit;
 
-    if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.sw_bat_ovp_th - 100)
-	ibus_limit = pm_state.target_current * 90 / 100;
-    else if (pm_state.bq2597x.vbat_volt < sys_config.bq2597x.sw_bat_ovp_th - 300)
-	ibus_limit = pm_state.target_current * 110 / 100;
- 
     if (ibus_limit == 0)
 	ibus_limit = pm_state.target_current * 110 / 100;
-	
-    if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.sw_bat_ovp_th)
-	step_vbat = sys_config.max4_policy.down_steps;
-    else if (pm_state.bq2597x.vbat_volt < sys_config.bq2597x.sw_bat_ovp_th - 5)
+
+    if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_th - 100)
+	ibus_limit = pm_state.target_current * 90 / 100;
+    else if (pm_state.bq2597x.vbat_volt < sys_config.bq2597x.bat_ovp_th - 300)
+	ibus_limit = pm_state.target_current * 110 / 100;
+ 
+    if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_th)
+	step_vbat = sys_config.flash2_policy.down_steps;
+    else if (pm_state.bq2597x.vbat_volt < sys_config.bq2597x.bat_ovp_th - 5)
 	step_vbat = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
 
-    if (pm_state.bq2597x.ibat_curr < sys_config.bq2597x.sw_bat_ocp_th )
+    if (pm_state.bq2597x.ibat_curr < sys_config.bq2597x.bat_ocp_th )
         step_ibat = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
-    else if (pm_state.bq2597x.ibat_curr > sys_config.bq2597x.sw_bat_ocp_th + 100)
-        step_ibat = sys_config.max4_policy.down_steps;
-
-    if (pm_state.bq2597x.ibat_curr < 0)
-	pr_debug("ibat_curr:%d\n", pm_state.bq2597x.ibat_curr);
+    else if (pm_state.bq2597x.ibat_curr > sys_config.bq2597x.bat_ocp_th + 100)
+        step_ibat = sys_config.flash2_policy.down_steps;
 
     if (pm_state.bq2597x.ibus_curr < ibus_limit + 50)
 	step_ibus = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
     else if (pm_state.bq2597x.ibus_curr > ibus_limit + 100)
-	step_ibus = sys_config.max4_policy.down_steps;
-#if 0
-    if (pm_state.bq2597x.vbus_volt < sys_config.bq2597x.sw_bus_ovp_th)
-	step_vbus = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
-    else if (pm_state.bq2597x.vbus_volt > sys_config.bq2597x.sw_bus_ovp_th + 20)
-	step_vbus = sys_config.max4_policy.down_steps;
-#endif
+	step_ibus = sys_config.flash2_policy.down_steps;
+
     sw_ctrl_steps = min(min(step_vbat, step_ibus), step_ibat);
 
     if (pm_state.bq2597x.bat_ocp_alarm 
@@ -478,7 +455,7 @@ static int usb_pd_pm_maxchg4_charge(unsigned int port)
 		|| pm_state.bq2597x.bus_ovp_alarm 
 		/*|| pm_state.bq2597x.tbat_temp > 60 
 		  || pm_state.bq2597x.tbus_temp > 50*/) {
-        hw_ctrl_steps = sys_config.max4_policy.down_steps;
+        hw_ctrl_steps = sys_config.flash2_policy.down_steps;
     } else {
 	hw_ctrl_steps = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
     }
@@ -494,8 +471,8 @@ static int usb_pd_pm_maxchg4_charge(unsigned int port)
 		|| pm_state.bq2597x.bus_ovp_fault)
         return 2; // go to switch, and try to ramp up if ok
 
-    if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_alarm_th - 50 &&
-            pm_state.bq2597x.ibat_curr < sys_config.bq2597x.sw_bat_ucp_th)
+    if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_th - 50 &&
+            pm_state.bq2597x.ibat_curr < sys_config.bq2597x.taper_current)
         return 1; // goto switch, never go to flash charge
 
 
@@ -521,12 +498,12 @@ const unsigned char *pm_state_str[] = {
 	"PD_PM_STATE_SW_ENTRY",
 	"PD_PM_STATE_SW_ENTRY_2",
 	"PD_PM_STATE_SW_LOOP",
-	"PD_PM_STATE_MAXCHG4_ENTRY",
-	"PD_PM_STATE_MAXCHG4_ENTRY_1",
-	"PD_PM_STATE_MAXCHG4_ENTRY_2",
-	"PD_PM_STATE_MAXCHG4_ENTRY_3",
-	"PD_PM_STATE_MAXCHG4_GET_PPS_STATUS",
-	"PD_PM_STATE_MAXCHG4_TUNE",
+	"PD_PM_STATE_FLASH2_ENTRY",
+	"PD_PM_STATE_FLASH2_ENTRY_1",
+	"PD_PM_STATE_FLASH2_ENTRY_2",
+	"PD_PM_STATE_FLASH2_ENTRY_3",
+	"PD_PM_STATE_FLASH2_GET_PPS_STATUS",
+	"PD_PM_STATE_FLASH2_TUNE",
 	"PD_PM_STATE_STOP_CHARGE",
 };
 
@@ -535,11 +512,10 @@ static void usb_pd_pm_move_state(pm_sm_state_t state)
 #if 0
     pr_debug("pm_state change:%s -> %s\n", 
 		pm_state_str[pm_state.state], pm_state_str[state]);
-#endif
-
     pm_state.state_log[pm_state.log_idx] = pm_state.state;
     pm_state.log_idx++;
     pm_state.log_idx %= PM_STATE_LOG_MAX;
+#endif
     pm_state.state = state;
 }
 
@@ -547,7 +523,7 @@ void usb_pd_pm_statemachine(unsigned int port)
 {
     usb_pd_port_t *dev = usb_pd_pe_get_device(port);
     int ret;
-
+    static int tune_vbus_retry;
 
     if (!pm_state.bq2597x.vbus_pres || !dev->explicit_contract)
         pm_state.state = PD_PM_STATE_DISCONNECT;
@@ -561,26 +537,26 @@ void usb_pd_pm_statemachine(unsigned int port)
             usb_pd_pm_enable_fc(false);
             usb_pd_pm_check_fc_enabled();
         }
-#if 0	
-        if (pm_state.bq2589x.charge_enabled) {
-            usb_pd_pm_enable_sw(false);
-	    usb_pd_pm_check_sw_enabled();
-        }
-#endif
-        pm_state.sw_from_maxchg4 = false;
+        pm_state.sw_from_flash2 = false;
         break;
 
     case PD_PM_STATE_ENTRY:
 	pr_debug("PPS supported:%d, vbat_volt:%d\n", adapter.pps_supported, pm_state.bq2597x.vbat_volt);
         if (!adapter.pps_supported 
-		|| pm_state.bq2597x.vbat_volt < sys_config.min_vbat_start_maxchg4
-                || pm_state.sw_from_maxchg4)
+		|| pm_state.bq2597x.vbat_volt < sys_config.min_vbat_start_flash2
+                || pm_state.sw_from_flash2) {
+	    pr_err("Start switch charge due to: pps_supported = %d, vbat_volt = %d, sw_from_flash2 = %d\n",
+		adapter.pps_supported, pm_state.bq2597x.vbat_volt, pm_state.sw_from_flash2);
             usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY);
-        else if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_alarm_th - 100) {
+	} else if (pm_state.bq2597x.vbat_volt > sys_config.bq2597x.bat_ovp_th - 100) {
+	    pr_err("battery volt-%d is too high, start switch charging directly\n", 
+			pm_state.bq2597x.vbat_volt);
             pm_state.sw_near_cv = true;
             usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY);
         } else {
-            usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_ENTRY);
+	    pr_err("battery volt-%d is ok, start flash charging\n", 
+			pm_state.bq2597x.vbat_volt);
+            usb_pd_pm_move_state(PD_PM_STATE_FLASH2_ENTRY);
         }
         break;
 
@@ -607,88 +583,91 @@ void usb_pd_pm_statemachine(unsigned int port)
         }
         break;
     case PD_PM_STATE_SW_LOOP:
-        if (adapter.pps_supported && !pm_state.sw_from_maxchg4 && !pm_state.sw_near_cv) {
-            if (pm_state.bq2597x.vbat_volt > sys_config.min_vbat_start_maxchg4) {
-                usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_ENTRY);
+        if (adapter.pps_supported && !pm_state.sw_from_flash2 && !pm_state.sw_near_cv) {
+            if (pm_state.bq2597x.vbat_volt > sys_config.min_vbat_start_flash2) {
+                usb_pd_pm_move_state(PD_PM_STATE_FLASH2_ENTRY);
                 break;
             }
         }
         break;
 
-    case PD_PM_STATE_MAXCHG4_ENTRY:
+    case PD_PM_STATE_FLASH2_ENTRY:
         if (pm_state.bq2589x.charge_enabled) {
             usb_pd_pm_enable_sw(false);
 	    usb_pd_pm_check_sw_enabled();
         }
         if (!pm_state.bq2589x.charge_enabled)
-            usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_ENTRY_1);
+            usb_pd_pm_move_state(PD_PM_STATE_FLASH2_ENTRY_1);
 
         break;
 
-    case PD_PM_STATE_MAXCHG4_ENTRY_1:
+    case PD_PM_STATE_FLASH2_ENTRY_1:
         if (*dev->current_state == PE_SNK_READY) {
             usb_pd_pm_switch_to_ardo(port);
             usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
-            usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_ENTRY_2);
+            usb_pd_pm_move_state(PD_PM_STATE_FLASH2_ENTRY_2);
+	    tune_vbus_retry = 0;
         }
         break;
 
-    case PD_PM_STATE_MAXCHG4_ENTRY_2:
+    /*tune adapter voltage to acceptable range:2xVBat + 200 +/- 50*/
+    case PD_PM_STATE_FLASH2_ENTRY_2:
         if (*dev->current_state == PE_SNK_READY) {
 	    msleep(50);
 	    usb_pd_pm_update_fc_status();
             if (pm_state.bq2597x.vbus_volt < (pm_state.bq2597x.vbat_volt * 2 + BUS_VOLT_INIT_UP - 50)) {
+		tune_vbus_retry++;
 		pm_state.request_volt += 20;
 		usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
 	    } else if (pm_state.bq2597x.vbus_volt > (pm_state.bq2597x.vbat_volt * 2 + BUS_VOLT_INIT_UP + 50)) {
+		tune_vbus_retry++;
 		pm_state.request_volt -= 20;
 		usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
 	    } else {
-                usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_ENTRY_3);
+		pr_err("inital adapter volt tune ok, retry %d times\n", tune_vbus_retry);
+                usb_pd_pm_move_state(PD_PM_STATE_FLASH2_ENTRY_3);
 	    }
-	    pr_debug("vbus_volt:%u, vbat_volt *2 + BUS_VOLT_INIT_UP = %u\n",
-			pm_state.bq2597x.vbus_volt, 
-			pm_state.bq2597x.vbat_volt * 2 + BUS_VOLT_INIT_UP);
-	    pr_debug("request_volt:%u\n", pm_state.request_volt);
         }
         break;
-    case PD_PM_STATE_MAXCHG4_ENTRY_3:
+    case PD_PM_STATE_FLASH2_ENTRY_3:
         if (*dev->current_state == PE_SNK_READY) {
             if (!pm_state.bq2589x.charge_enabled && !pm_state.bq2597x.charge_enabled) {
                 usb_pd_pm_enable_fc(true);
                 usb_pd_pm_check_fc_enabled();
                 if (pm_state.bq2597x.charge_enabled)
-                    usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_GET_PPS_STATUS);
+                    usb_pd_pm_move_state(PD_PM_STATE_FLASH2_GET_PPS_STATUS);
             }
         }
         break;
-    case PD_PM_STATE_MAXCHG4_GET_PPS_STATUS:
+    case PD_PM_STATE_FLASH2_GET_PPS_STATUS:
         if (*dev->current_state == PE_SNK_READY) {
             usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_GET_PPS_STATUS);
-            usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_TUNE);
+            usb_pd_pm_move_state(PD_PM_STATE_FLASH2_TUNE);
         }
         break;
-    case PD_PM_STATE_MAXCHG4_TUNE:
-        if (pm_state.bq2597x.vbat_volt < sys_config.min_vbat_start_maxchg4 - 400){
+    case PD_PM_STATE_FLASH2_TUNE:
+        if (pm_state.bq2597x.vbat_volt < sys_config.min_vbat_start_flash2 - 400){
             usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY);
             break;
         }
 
         if (*dev->current_state == PE_SNK_READY) {
-            ret = usb_pd_pm_maxchg4_charge(port);
-	    pr_err("usb_pd_pm_maxchg4_charge ret:%d\n", ret);
+            ret = usb_pd_pm_flash2_charge(port);
             if (ret == -1) {
+		pr_err("Move to stop charging:%d\n", ret);
                 usb_pd_pm_move_state(PD_PM_STATE_STOP_CHARGE);
                 break;
             } else if (ret == -2 || ret == 1) {
+		pr_err("Move to switch charging:%d\n", ret);
                 usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY);
-                pm_state.sw_from_maxchg4 = true;
+                pm_state.sw_from_flash2 = true;
                 break;
             } else if (ret == 2) {
+		pr_err("Move to switch charging, will try to recover to flash charging:%d\n", ret);
                 usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY);
             } else {// normal tune adapter output
                 usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
-                usb_pd_pm_move_state(PD_PM_STATE_MAXCHG4_GET_PPS_STATUS);
+                usb_pd_pm_move_state(PD_PM_STATE_FLASH2_GET_PPS_STATUS);
             }
         }
         break;
@@ -1012,7 +991,7 @@ void usb_pd_init(const usb_pd_port_config_t *port_config)
 	pm_state.fc_psy = power_supply_get_by_name("bq2597x");
 	pm_state.sw_psy = power_supply_get_by_name("bq2589x");
 
-	pm_state.target_current = sys_config.bq2597x.sw_bus_ocp_th;
+	pm_state.target_current = sys_config.bq2597x.bus_ocp_th;
 
 	INIT_DELAYED_WORK(&pm_state.pm_work, usb_pd_pm_workfunc);
 
