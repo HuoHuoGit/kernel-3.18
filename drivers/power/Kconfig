@@ -368,6 +368,21 @@ config CHARGER_BQ24735
 	help
 	  Say Y to enable support for the TI BQ24735 battery charger.
 
+config CHARGER_BQ2560X
+	tristate "TI BQ2560x battery charger driver"
+	depends on I2C
+	default y
+	help
+	  Say Y to enable support for the TI BQ2560x battery charger.
+
+config FUELGAUGE_BQ27426
+	tristate "TI BQ27426 fuel gauge driver"
+	depends on I2C
+	default y
+	help
+	  Say Y to enable support for the TI BQ27426 fuel gauge.
+
+
 config CHARGER_SMB347
 	tristate "Summit Microelectronics SMB347 Battery Charger"
 	depends on I2C

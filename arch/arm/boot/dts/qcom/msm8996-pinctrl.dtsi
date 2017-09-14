@@ -862,6 +862,43 @@
 				};
 			};
 		};
+			bq27426_int_default: bq27426_int_default {
+				muex {
+					pins = "gpio1";
+					function = "gpio";
+				};
+				config {
+					pins = "gpio1";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+			};
+
+			bq2560x_int_default: bq2560x_int_default {
+				muex {
+					pins = "gpio0";
+					function = "gpio";
+				};
+				config {
+					pins = "gpio0";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+			};
+
+/*
+			tusb422_int_default: tusb422_int_default {
+				muex {
+					pins = "gpio84";
+					function = "gpio";
+				};
+				config {
+					pins = "gpio84";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+			};
+*/
 
 		pmx_fm_int {
 			fm_int_active: fm_int_active {
