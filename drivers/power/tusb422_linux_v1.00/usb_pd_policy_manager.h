@@ -78,11 +78,13 @@ struct flash2_policy {
 	uint16_t volt_hysteresis;
 };
 
+#if 0
 struct bq2597x_cfg {
 	uint16_t bat_ovp_th;
 	uint16_t bat_ocp_th;
 	uint16_t bus_ovp_th;
 	uint16_t bus_ocp_th;
+
 
 	uint16_t bat_ucp_alarm_th;
 
@@ -102,9 +104,9 @@ struct bq2597x_cfg {
 	int32_t sw_bus_ovp_th;
 	int32_t sw_bus_ocp_th;
 	int32_t sw_bat_ucp_th;
-
 	int32_t taper_current;
 };
+#endif
 
 struct bq2589x {
 	bool charge_enabled;
@@ -159,6 +161,7 @@ typedef struct {
     bool        flash2_is_charging;
     bool        sw_from_flash2;
     bool        sw_near_cv;
+    bool	sw_fc2_init_fail;
 
     /* for RDO build */
     uint16_t    request_volt;
@@ -182,8 +185,14 @@ typedef struct {
 }pm_t;
 
 struct sys_config {
-	struct bq2597x_cfg bq2597x;
+	uint16_t bat_volt_lp_lmt; /*bat volt loop limit*/
+	uint16_t bat_curr_lp_lmt;
+	uint16_t bus_volt_lp_lmt;
+	uint16_t bus_curr_lp_lmt;
+	int32_t fc2_taper_current;
+
 	struct flash2_policy flash2_policy;
+
 	uint16_t min_vbat_start_flash2;
 };
 
