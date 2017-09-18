@@ -83,10 +83,10 @@ static const struct sys_config sys_config = {
 	.bq2597x.bus_ocp_th		= BATT_FAST_CHG_CURR >> 1,
 
 	.bq2597x.taper_current		= 2000,
-	.flash2_policy.down_steps = -1,
-	.flash2_policy.volt_hysteresis = 50,
+	.flash2_policy.down_steps	= -1,
+	.flash2_policy.volt_hysteresis	= 50,
 
-	.min_vbat_start_flash2 = 3500,
+	.min_vbat_start_flash2		= 3500,
 };
 
 static adapter_t adapter;
@@ -497,6 +497,7 @@ const unsigned char *pm_state_str[] = {
 	"PD_PM_STATE_DISCONNECT",
 	"PD_PM_STATE_SW_ENTRY",
 	"PD_PM_STATE_SW_ENTRY_2",
+	"PD_PM_STATE_SW_ENTRY_3",
 	"PD_PM_STATE_SW_LOOP",
 	"PD_PM_STATE_FLASH2_ENTRY",
 	"PD_PM_STATE_FLASH2_ENTRY_1",
@@ -509,7 +510,7 @@ const unsigned char *pm_state_str[] = {
 
 static void usb_pd_pm_move_state(pm_sm_state_t state)
 {
-#if 0
+#if 1
     pr_debug("pm_state change:%s -> %s\n", 
 		pm_state_str[pm_state.state], pm_state_str[state]);
     pm_state.state_log[pm_state.log_idx] = pm_state.state;
@@ -525,7 +526,7 @@ void usb_pd_pm_statemachine(unsigned int port)
     int ret;
     static int tune_vbus_retry;
 
-    if (!pm_state.bq2597x.vbus_pres || !dev->explicit_contract)
+    if (!pm_state.bq2597x.vbus_pres /*|| !dev->explicit_contract*/)
         pm_state.state = PD_PM_STATE_DISCONNECT;
     else if (pm_state.state == PD_PM_STATE_DISCONNECT){
         usb_pd_pm_move_state(PD_PM_STATE_ENTRY);
@@ -537,6 +538,10 @@ void usb_pd_pm_statemachine(unsigned int port)
             usb_pd_pm_enable_fc(false);
             usb_pd_pm_check_fc_enabled();
         }
+	if (!pm_state.bq2589x.charge_enabled) {
+	    usb_pd_pm_enable_sw(true);
+	    usb_pd_pm_check_sw_enabled();
+	}
         pm_state.sw_from_flash2 = false;
         break;
 
@@ -566,12 +571,9 @@ void usb_pd_pm_statemachine(unsigned int port)
             usb_pd_pm_check_fc_enabled();
         }
 
-        if (!pm_state.bq2597x.charge_enabled) {
-            usb_pd_pm_enable_sw(true);
-	    usb_pd_pm_check_sw_enabled();
-        }
-        if (!pm_state.bq2597x.charge_enabled && pm_state.bq2589x.charge_enabled)
+        if (!pm_state.bq2597x.charge_enabled)
             usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY_2);
+
         break;
 
     case PD_PM_STATE_SW_ENTRY_2:
@@ -579,12 +581,24 @@ void usb_pd_pm_statemachine(unsigned int port)
             usb_pd_pm_select_default_5v(port);
            // Build RDO based on policy manager response.
             usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
-            usb_pd_pm_move_state(PD_PM_STATE_SW_LOOP);
+            usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY_3);
         }
-        break;
+ 
+    case PD_PM_STATE_SW_ENTRY_3:
+        if (*dev->current_state == PE_SNK_READY){
+		pr_err("enable sw charger and check enable\n");
+		usb_pd_pm_enable_sw(true);
+		usb_pd_pm_check_sw_enabled();
+		if (pm_state.bq2589x.charge_enabled) 
+			usb_pd_pm_move_state(PD_PM_STATE_SW_LOOP);
+	}
+       break;
+
     case PD_PM_STATE_SW_LOOP:
         if (adapter.pps_supported && !pm_state.sw_from_flash2 && !pm_state.sw_near_cv) {
             if (pm_state.bq2597x.vbat_volt > sys_config.min_vbat_start_flash2) {
+		pr_err("battery volt: %d is ok, proceeding to flash charging...\n",
+			pm_state.bq2597x.vbat_volt);
                 usb_pd_pm_move_state(PD_PM_STATE_FLASH2_ENTRY);
                 break;
             }

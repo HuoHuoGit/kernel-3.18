@@ -570,8 +570,8 @@
 			ti,bq2589x,enable-termination;
 			ti,bq2589x,enable-ico;
 			ti,bq2589x,use-absolute-vindpm;
-			ti,bq2589x,enable-12v;
-			ti,bq2589x,enable-hvdcp;
+			/*ti,bq2589x,enable-12v;*/
+			/*ti,bq2589x,enable-hvdcp;*/
 					
 			ti,bq2589x,charge-voltage = <4400>;
 			ti,bq2589x,charge-current = <2000>;
@@ -626,7 +626,7 @@
 			ti,bq2597x,bat-ovp-threshold = <4500>;
 			ti,bq2597x,bat-ovp-alarm-threshold = <4400>;
 			ti,bq2597x,bat-ocp-threshold = <8000>;
-			ti,bq2597x,bat-ocp-alarm-threshold = <7000>;
+			ti,bq2597x,bat-ocp-alarm-threshold = <7500>;
 
 			ti,bq2597x,bus-ovp-threshold = <12000>;
 			ti,bq2597x,bus-ovp-alarm-threshold = <11000>;
