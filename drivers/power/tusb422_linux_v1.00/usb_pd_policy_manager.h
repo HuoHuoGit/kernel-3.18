@@ -110,6 +110,7 @@ struct bq2597x_cfg {
 
 struct bq2589x {
 	bool charge_enabled;
+	bool charge_hized;
 
 };
 

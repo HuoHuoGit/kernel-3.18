@@ -159,8 +159,11 @@ static void usb_pd_pm_update_sw_status(void)
 
 	ret = pm_state.sw_psy->get_property(pm_state.sw_psy, POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
 	if (!ret)
-		pm_state.bq2589x.charge_enabled = !val.intval;
+		pm_state.bq2589x.charge_hized = val.intval;
 
+	ret = pm_state.sw_psy->get_property(pm_state.sw_psy, POWER_SUPPLY_PROP_CHARGING_ENABLED, &val);
+	if (!ret)
+		pm_state.bq2589x.charge_enabled = val.intval;
 
 }
 
@@ -274,7 +277,26 @@ static int usb_pd_pm_enable_sw(bool enable)
 		}
 	}
 
-	val.intval = !enable;
+	val.intval = enable;
+	ret = pm_state.sw_psy->set_property(pm_state.sw_psy, 
+			POWER_SUPPLY_PROP_CHARGING_ENABLED, &val);
+	
+	return ret;
+}
+
+static int usb_pd_pm_enable_sw_hiz(bool enable)
+{
+	int ret;
+	union power_supply_propval val = {0,};
+
+	if (!pm_state.sw_psy) {
+		pm_state.sw_psy = power_supply_get_by_name("bq2589x");
+		if (!pm_state.sw_psy) {
+			return -ENODEV;
+		}
+	}
+
+	val.intval = enable;
 	ret = pm_state.sw_psy->set_property(pm_state.sw_psy, 
 			POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
 	
@@ -314,12 +336,34 @@ static int usb_pd_pm_check_sw_enabled(void)
 	}
 
 	ret = pm_state.sw_psy->get_property(pm_state.sw_psy, 
-			POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
+			POWER_SUPPLY_PROP_CHARGING_ENABLED, &val);
 	if (!ret)
-		pm_state.bq2589x.charge_enabled = !val.intval;
+		pm_state.bq2589x.charge_enabled = !!val.intval;
 	
 	return ret;
 }
+
+static int usb_pd_pm_check_sw_hized(void)
+{
+	int ret;
+	union power_supply_propval val = {0,};
+
+	if (!pm_state.sw_psy) {
+		pm_state.sw_psy = power_supply_get_by_name("bq2589x");
+		if (!pm_state.sw_psy) {
+			return -ENODEV;
+		}
+	}
+
+	ret = pm_state.sw_psy->get_property(pm_state.sw_psy, 
+			POWER_SUPPLY_PROP_INPUT_SUSPEND, &val);
+	if (!ret)
+		pm_state.bq2589x.charge_hized = !!val.intval;
+	
+	return ret;
+}
+
+
 
 static void usb_pd_pm_retrieve_src_pdo(unsigned int port)
 {
@@ -531,7 +575,7 @@ void usb_pd_pm_statemachine(unsigned int port)
     int ret;
     static int tune_vbus_retry;
 
-    if (!pm_state.bq2597x.vbus_pres /*|| !dev->explicit_contract*/)
+    if (!pm_state.bq2597x.vbus_pres || !dev->explicit_contract)
         pm_state.state = PD_PM_STATE_DISCONNECT;
     else if (pm_state.state == PD_PM_STATE_DISCONNECT){
         usb_pd_pm_move_state(PD_PM_STATE_ENTRY);
@@ -543,10 +587,17 @@ void usb_pd_pm_statemachine(unsigned int port)
             usb_pd_pm_enable_fc(false);
             usb_pd_pm_check_fc_enabled();
         }
+
 	if (!pm_state.bq2589x.charge_enabled) {
 	    usb_pd_pm_enable_sw(true);
 	    usb_pd_pm_check_sw_enabled();
 	}
+	
+	if (pm_state.bq2589x.charge_hized) {
+	    usb_pd_pm_enable_sw_hiz(false);
+	    usb_pd_pm_check_sw_hized();
+	}
+
         pm_state.sw_from_flash2 = false;
 	pm_state.sw_fc2_init_fail = false;
         break;
@@ -596,7 +647,9 @@ void usb_pd_pm_statemachine(unsigned int port)
 		pr_err("enable sw charger and check enable\n");
 		usb_pd_pm_enable_sw(true);
 		usb_pd_pm_check_sw_enabled();
-		if (pm_state.bq2589x.charge_enabled) 
+		usb_pd_pm_enable_sw_hiz(false);
+		usb_pd_pm_check_sw_hized();
+		if (pm_state.bq2589x.charge_enabled && !pm_state.bq2589x.charge_hized) 
 			usb_pd_pm_move_state(PD_PM_STATE_SW_LOOP);
 	}
        break;
@@ -617,7 +670,13 @@ void usb_pd_pm_statemachine(unsigned int port)
             usb_pd_pm_enable_sw(false);
 	    usb_pd_pm_check_sw_enabled();
         }
-        if (!pm_state.bq2589x.charge_enabled)
+	
+        if (!pm_state.bq2589x.charge_hized) {
+            usb_pd_pm_enable_sw_hiz(true);
+	    usb_pd_pm_check_sw_hized();
+        }
+
+        if (!pm_state.bq2589x.charge_enabled && pm_state.bq2589x.charge_hized)
             usb_pd_pm_move_state(PD_PM_STATE_FLASH2_ENTRY_1);
 
         break;
@@ -658,7 +717,14 @@ void usb_pd_pm_statemachine(unsigned int port)
         break;
     case PD_PM_STATE_FLASH2_ENTRY_3:
         if (*dev->current_state == PE_SNK_READY) {
-            if (!pm_state.bq2589x.charge_enabled && !pm_state.bq2597x.charge_enabled) {
+	    pr_err("bq2589x.charge_hized:%d\n", pm_state.bq2589x.charge_hized);
+	    /*check switch charge is disabled again, volt tune up in PD_PM_STATE_FLASH2_ENTRY_2
+	     * sometimes trigger an adapter plugin event, which make sw charger exit hiz mode*/
+	    if (!pm_state.bq2589x.charge_hized) {
+		usb_pd_pm_enable_sw_hiz(true);
+		usb_pd_pm_check_sw_hized();
+	    }
+            if (pm_state.bq2589x.charge_hized && !pm_state.bq2597x.charge_enabled) {
                 usb_pd_pm_enable_fc(true);
                 usb_pd_pm_check_fc_enabled();
                 if (pm_state.bq2597x.charge_enabled)

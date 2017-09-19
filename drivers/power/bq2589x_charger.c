@@ -535,6 +535,16 @@ static int bq2589x_disable_charger(struct bq2589x *bq)
 }
 EXPORT_SYMBOL_GPL(bq2589x_disable_charger);
 
+static int bq2589x_get_charge_enable(struct bq2589x *bq) 
+{
+	int ret;
+	u8 val;
+
+	ret = bq2589x_read_byte(bq, &val, BQ2589X_REG_03);
+	if (!ret) 
+		bq->charge_enabled = !!(val & BQ2589X_CHG_CONFIG_MASK);
+	return ret;
+}
 
 int bq2589x_adc_start(struct bq2589x *bq, bool oneshot)
 {
@@ -1339,6 +1349,7 @@ static int bq2589x_charger_get_property(struct power_supply *psy,
 		pr_debug("POWER_SUPPLY_PROP_CHARGE_TYPE:%d\n", val->intval);
 		break;
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		bq2589x_get_charge_enable(bq);
 		val->intval = bq->charge_enabled;
 		break;
 	case POWER_SUPPLY_PROP_STATUS:
