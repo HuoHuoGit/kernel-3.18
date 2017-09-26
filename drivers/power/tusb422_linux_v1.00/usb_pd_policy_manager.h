@@ -168,7 +168,7 @@ typedef struct {
     uint16_t    request_volt;
     uint16_t    request_current;
 
-    uint16_t	target_current;
+    uint16_t	ibus_lmt_curr;
     
     pm_sm_state_t     state; //state machine
 

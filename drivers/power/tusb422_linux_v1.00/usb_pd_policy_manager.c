@@ -449,7 +449,7 @@ static void usb_pd_pm_switch_to_ardo(unsigned int port)
 	usb_pd_port_t *dev = usb_pd_pe_get_device(port);
 
 	pm_state.request_volt = pm_state.bq2597x.vbat_volt * 2 + BUS_VOLT_INIT_UP;
-	pm_state.request_current = min(dev->apdo_max_curr, pm_state.target_current);
+	pm_state.request_current = min(dev->apdo_max_curr, pm_state.ibus_lmt_curr);
 
 	dev->selected_pdo = dev->rx_src_pdo[dev->apdo_idx].pdo;
 	dev->object_position = dev->apdo_idx + 1;
@@ -474,12 +474,12 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
     static int ibus_limit;
 
     if (ibus_limit == 0)
-	ibus_limit = pm_state.target_current * 110 / 100;
+	ibus_limit = pm_state.ibus_lmt_curr * 110 / 100;
 
     if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt - 50)
-	ibus_limit = pm_state.target_current * 90 / 100;
+	ibus_limit = pm_state.ibus_lmt_curr * 90 / 100;
     else if (pm_state.bq2597x.vbat_volt < sys_config.bat_volt_lp_lmt - 250)
-	ibus_limit = pm_state.target_current * 110 / 100;
+	ibus_limit = pm_state.ibus_lmt_curr * 110 / 100;
  
     if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt)
 	step_vbat = sys_config.flash2_policy.down_steps;
@@ -641,7 +641,8 @@ void usb_pd_pm_statemachine(unsigned int port)
             usb_pd_policy_manager_request(port, PD_POLICY_MNGR_REQ_SEL_CAPABILITY);
             usb_pd_pm_move_state(PD_PM_STATE_SW_ENTRY_3);
         }
- 
+	break;
+
     case PD_PM_STATE_SW_ENTRY_3:
         if (*dev->current_state == PE_SNK_READY){
 		pr_err("enable sw charger and check enable\n");
@@ -1084,7 +1085,7 @@ void usb_pd_init(const usb_pd_port_config_t *port_config)
 	pm_state.fc_psy = power_supply_get_by_name("bq2597x");
 	pm_state.sw_psy = power_supply_get_by_name("bq2589x");
 
-	pm_state.target_current = sys_config.bus_curr_lp_lmt;
+	pm_state.ibus_lmt_curr = sys_config.bus_curr_lp_lmt;
 
 	INIT_DELAYED_WORK(&pm_state.pm_work, usb_pd_pm_workfunc);
 
