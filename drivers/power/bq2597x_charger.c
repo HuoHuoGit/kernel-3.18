@@ -155,6 +155,7 @@ struct bq2597x_cfg {
 	int bus_therm_th; /*in %*/
 	int die_therm_th; /*in degC*/
 
+	int sense_r_mohm;
 };
 
 struct bq2597x {
@@ -1051,10 +1052,26 @@ static int bq2597x_clear_fault_int_mask(struct bq2597x *bq, u8 mask)
 }
 EXPORT_SYMBOL_GPL(bq2597x_clear_fault_int_mask);
 
-/*
- *
- *
- */
+
+static int bq2597x_set_sense_resistor(struct bq2597x *bq, int r_mohm)
+{
+	int ret;
+	u8 val;
+
+	if (r_mohm == 2)
+		val = BQ2597X_SET_IBAT_SNS_RES_2MHM;
+	else if (r_mohm == 5)
+		val = BQ2597X_SET_IBAT_SNS_RES_5MHM;
+	else
+		return -EINVAL;
+	
+	val <<= BQ2597X_SET_IBAT_SNS_RES_SHIFT;
+
+	ret = bq2597x_update_bits(bq, BQ2597X_REG_2B,
+				BQ2597X_SET_IBAT_SNS_RES_MASK,
+				val);
+	return ret;
+}
 
 static int bq2597x_detect_device(struct bq2597x *bq)
 {
@@ -1187,6 +1204,14 @@ static int bq2597x_parse_dt(struct bq2597x *bq, struct device *dev)
 		pr_err("failed to read ac-ovp-threshold\n");
 		return ret;
 	}
+
+	ret = of_property_read_u32(np, "ti,bq2597x,sense-resistor-mohm",
+			&bq->cfg->sense_r_mohm);
+	if (ret) {
+		pr_err("failed to read sense-resistor-mohm\n");
+		return ret;
+	}
+
 
 	return 0;
 }
@@ -1350,6 +1375,9 @@ static int bq2597x_init_int_src(struct bq2597x *bq)
 static int bq2597x_init_device(struct bq2597x *bq)
 {
 	bq2597x_enable_wdt(bq, false);
+
+	bq2597x_set_sense_resistor(bq, bq->cfg->sense_r_mohm);
+
 	bq2597x_init_protection(bq);
 	bq2597x_init_adc(bq);
 	bq2597x_init_int_src(bq);

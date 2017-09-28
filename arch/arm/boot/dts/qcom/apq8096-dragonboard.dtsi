@@ -639,6 +639,8 @@
 			ti,bq2597x,die-therm-threshold = <125>;
 
 			ti,bq2597x,ac-ovp-threshold = <12>;
+			ti,bq2597x,sense-resistor-mohm = <2>;
+
 		};
 
 
