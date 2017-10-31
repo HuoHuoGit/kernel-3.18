@@ -375,6 +375,11 @@ static void usb_pd_pm_retrieve_src_pdo(unsigned int port)
 	int i;
 
 	dev->rx_src_pdo_num = dev->rx_msg_data_len >> 2;
+	//reset max_volt, max_curr to 0 in case of keeping value from previous adapter
+	dev->apdo_max_volt = 0;
+	dev->apdo_max_curr = 0;
+
+	adapter.pps_supported = false;
 
 	for (i = 0; i < dev->rx_src_pdo_num; i++) {
 		pdo = get_data_object(&pdo_data[i << 2]);
