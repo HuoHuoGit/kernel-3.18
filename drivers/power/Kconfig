@@ -375,6 +375,14 @@ config CHARGER_BQ2560X
 	help
 	  Say Y to enable support for the TI BQ2560x battery charger.
 
+config CHARGER_BQ24157
+	tristate "TI BQ24157 battery charger driver"
+	depends on I2C
+	default y
+	help
+	  Say Y to enable support for the TI BQ24157 battery charger.
+
+
 config FUELGAUGE_BQ27426
 	tristate "TI BQ27426 fuel gauge driver"
 	depends on I2C
