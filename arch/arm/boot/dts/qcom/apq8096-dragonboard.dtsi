@@ -618,12 +618,17 @@
 		bq2415x_otg_supply:bq2415x@6A {
 			compatible = "ti,bq24157";
 			reg = <0x6A>;
+			interrupt-parent = <&tlmm>;
+			interrupts = <124 2>;
+			pinctrl-names = "defaults";
+			pinctrl-0 = <&bq24157_int_default>;
+
 
 			regulator-name = "bq2415x_otg_vreg";
 			    
 
-			ti,bq2415x,chip-disable-gpio = <20>;
-			ti,bq2415x,interrupt-gpio = <124>;
+			ti,bq2415x,chip-disable-gpio = <&tlmm 2 0>;
+			ti,bq2415x,interrupt-gpio = <&tlmm 124 0>;
 			
 			ti,bq2415x,current-sensor-mohm = <55>;
 			ti,bq2415x,charge-voltage = <4400>;
@@ -635,7 +640,7 @@
 			ti,bq2415x,safety-max-charge-current = <1550>;
 			ti,bq2415x,safety-max-charge-voltage = <4400>;
 
-			ti,bq2415x,enable_term;
+			ti,bq2415x,enable-term;
 
 			ti,bq2415x,jeita-hot-degc = <540>;
 			ti,bq2415x,jeita-warm-degc = <450>;

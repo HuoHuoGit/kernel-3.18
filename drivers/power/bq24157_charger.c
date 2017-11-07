@@ -634,7 +634,7 @@ static int bq2415x_set_input_current_limit(struct bq2415x *bq, int curr)
 		val = BQ2415X_IINLIM_500MA;
 	else if (curr == 800)
 		val = BQ2415X_IINLIM_800MA;
-	else if (curr == 0)
+	else if (curr == 0 || curr > 800)
 		val = BQ2415X_IINLIM_NOLIM;
 	
 	val <<= BQ2415X_IINLIM_SHIFT;
@@ -1914,7 +1914,7 @@ static void determine_initial_status(struct bq2415x *bq)
 	if (!ret) 
 		bq->in_hiz = !!status;
 
-	bq2415x_charger_interrupt(bq->client->irq, bq);
+	bq2415x_charger_interrupt(bq->vbus_irq_num, bq);
 }
 
 
@@ -2019,7 +2019,7 @@ static int bq2415x_charger_probe(struct i2c_client *client,
 				IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 				"bq2415x charger irq", bq);
 		if (ret < 0) {
-			pr_err("request irq for irq=%d failed, ret =%d\n", client->irq, ret);
+			pr_err("request irq for irq=%d failed, ret =%d\n", bq->vbus_irq_num, ret);
 			goto err_1;
 		}
 		enable_irq_wake(bq->vbus_irq_num);
@@ -2095,9 +2095,9 @@ static int bq2415x_resume(struct device *dev)
 	bq->resume_completed = true;
 	if (bq->irq_waiting) {
 		bq->irq_disabled = false;
-		enable_irq(client->irq);
+		enable_irq(bq->vbus_irq_num);
 		mutex_unlock(&bq->irq_complete);
-		bq2415x_charger_interrupt(client->irq, bq);
+		bq2415x_charger_interrupt(bq->vbus_irq_num, bq);
 	} else {
 		mutex_unlock(&bq->irq_complete);
 	}
