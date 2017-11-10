@@ -749,7 +749,10 @@ static int bq2597x_set_acovp_th(struct bq2597x *bq, int threshold)
 	if (threshold < BQ2597X_AC_OVP_BASE)
 		threshold = BQ2597X_AC_OVP_BASE;
 
-	val = (threshold - BQ2597X_AC_OVP_BASE) /  BQ2597X_AC_OVP_LSB;
+	if (threshold == BQ2597X_AC_OVP_6P5V)
+		val = 0x07;
+	else
+		val = (threshold - BQ2597X_AC_OVP_BASE) /  BQ2597X_AC_OVP_LSB;
 
 	val <<= BQ2597X_AC_OVP_SHIFT;
 

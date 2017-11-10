@@ -87,6 +87,7 @@
 #define BQ2597X_AC_OVP_SHIFT				0
 #define BQ2597X_AC_OVP_BASE				11
 #define BQ2597X_AC_OVP_LSB				1
+#define BQ2597X_AC_OVP_6P5V				6
 
 /* Register 06h */
 #define BQ2597X_REG_06					0x06
