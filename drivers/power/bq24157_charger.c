@@ -628,9 +628,11 @@ static int bq2415x_set_input_current_limit(struct bq2415x *bq, int curr)
 		val = BQ2415X_IINLIM_500MA;
 	else if (curr == 800)
 		val = BQ2415X_IINLIM_800MA;
-	else if (curr == 0 || curr > 800)
+	else if (curr >= 1500)
 		val = BQ2415X_IINLIM_NOLIM;
-	
+	else
+		val = BQ2415X_IINLIM_100MA;
+
 	val <<= BQ2415X_IINLIM_SHIFT;
 
 	pr_debug("val:0x%02X\n", val);
