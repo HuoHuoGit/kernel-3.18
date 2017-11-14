@@ -37,6 +37,7 @@
 #include <linux/bitops.h>
 #include <linux/math64.h>
 #include <linux/alarmtimer.h>
+#include <linux/qpnp/power-on.h>
 
 #include "bq24157_reg.h"
 
@@ -168,16 +169,15 @@ struct bq2415x {
 	int charge_state;
 	int charging_disabled_status;
 
-	int gpio_irq;/*interrupt gpio*/
 	int gpio_cd; /* CD pin control */
-	int vbus_irq_num;
 
 	int skip_reads;
 	int skip_writes;
 
 	struct delayed_work discharge_jeita_work; /*normal no charge mode*/
 	struct delayed_work charge_jeita_work; /*charge mode jeita work*/
-
+	struct delayed_work vbus_changed_work;
+	
 	struct alarm jeita_alarm;
 
 	struct dentry *debug_root;
@@ -189,7 +189,7 @@ struct bq2415x {
 	struct power_supply batt_psy;
 };
 
-
+static struct bq2415x *g_bq; 
 static int BatteryTestStatus_enable = 0;
 
 static int __bq2415x_read_reg(struct bq2415x *bq, u8 reg, u8 *data)
@@ -472,12 +472,6 @@ static int bq2415x_parse_dt(struct device *dev,
 	bq->charge_enabled = !(of_property_read_bool(np, "ti,charging-disabled"));
 
 	bq->enable_term = of_property_read_bool(np, "ti,bq2415x,enable-term");
-
-	bq->gpio_irq = of_get_named_gpio(np, "ti,bq2415x,interrupt-gpio", 0);
-	if (bq->gpio_irq < 0) {
-		pr_err("failed to get node of ti,bq2415x,interrupt-gpio");
-		return -EIO;
-	}
 
 	bq->gpio_cd = of_get_named_gpio(np, "ti,bq2415x,chip-disable-gpio", 0);
 	if (bq->gpio_cd < 0) {
@@ -1842,27 +1836,15 @@ static void create_debugfs_entry(struct bq2415x *bq)
 	}	
 }
 
-static irqreturn_t bq2415x_charger_interrupt(int irq, void *dev_id)
+static void bq2415x_vbus_changed_workfunc(struct work_struct *work)
 {
-	struct bq2415x *bq = dev_id;
+	struct bq2415x *bq = container_of(work,
+				struct bq2415x, vbus_changed_work.work);
 	int ret;	
 	
-	mdelay(5);
-
-	mutex_lock(&bq->irq_complete);
-	bq->irq_waiting = true;
-	if (!bq->resume_completed) {
-		dev_dbg(bq->dev, "IRQ triggered before device-resume\n");
-		if (!bq->irq_disabled) {
-			disable_irq_nosync(irq);
-			bq->irq_disabled = true;
-		}
-		mutex_unlock(&bq->irq_complete);
-		return IRQ_HANDLED;
-	}
-	bq->irq_waiting = false;
-
-	bq->power_good = !gpio_get_value(bq->gpio_irq);
+	ret = qpnp_pon_get_cblpwr_status(&bq->power_good);
+	if (ret)
+		return;
 
 	if(!bq->power_good) {
 	    if(bq->usb_present) {
@@ -1897,14 +1879,16 @@ static irqreturn_t bq2415x_charger_interrupt(int irq, void *dev_id)
 		pr_err("usb plugged in, set usb present = %d\n", bq->usb_present);
 	}
 	
-
-	mutex_unlock(&bq->irq_complete);
-
 	power_supply_changed(&bq->batt_psy);
 
-	return IRQ_HANDLED;
 }
 
+void bq2415x_cblpwr_changed(void)
+{
+	if (g_bq)
+		schedule_delayed_work(&g_bq->vbus_changed_work,0);
+}
+EXPORT_SYMBOL(bq2415x_cblpwr_changed);
 
 static void determine_initial_status(struct bq2415x *bq)
 {
@@ -1914,10 +1898,8 @@ static void determine_initial_status(struct bq2415x *bq)
 	if (!ret) 
 		bq->in_hiz = !!status;
 
-	bq2415x_charger_interrupt(bq->vbus_irq_num, bq);
+	bq2415x_cblpwr_changed();
 }
-
-
 
 static int bq2415x_charger_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
@@ -1925,6 +1907,7 @@ static int bq2415x_charger_probe(struct i2c_client *client,
 	struct bq2415x *bq;
 	struct power_supply *usb_psy;
 	struct power_supply *bms_psy;
+	bool temp_pg;
 
 	int ret;
 	
@@ -1939,6 +1922,11 @@ static int bq2415x_charger_probe(struct i2c_client *client,
 		dev_dbg(&client->dev, "bms supply not found, defer probe\n");
 		return -EPROBE_DEFER;
 	}
+	/* make sure power on module is ready, 
+	 * we need it to get adapter present status*/
+	ret = qpnp_pon_get_cblpwr_status(&temp_pg);
+	if (ret == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
 
 	bq = devm_kzalloc(&client->dev, sizeof(struct bq2415x), GFP_KERNEL);
 	if (!bq) {
@@ -2003,34 +1991,15 @@ static int bq2415x_charger_probe(struct i2c_client *client,
 		return ret;
 	}
 
-	if (gpio_is_valid(bq->gpio_irq)) {
-		ret = devm_gpio_request(&client->dev, bq->gpio_irq, "bq2415x_vbus_irq_num");
-		if (ret) {
-			pr_err("Failed to request vbus interrupt GPIO!");
-			return -EIO;
-		}
-
-		gpio_direction_input(bq->gpio_irq);
-
-		bq->vbus_irq_num = gpio_to_irq(bq->gpio_irq);
-
-		ret = devm_request_threaded_irq(&client->dev, bq->vbus_irq_num, NULL,
-				bq2415x_charger_interrupt,
-				IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_ONESHOT,
-				"bq2415x charger irq", bq);
-		if (ret < 0) {
-			pr_err("request irq for irq=%d failed, ret =%d\n", bq->vbus_irq_num, ret);
-			goto err_1;
-		}
-		enable_irq_wake(bq->vbus_irq_num);
-	}
-
 	bq2415x_wakeup_src_init(bq);
 
 	device_init_wakeup(bq->dev, 1);	
 
 	INIT_DELAYED_WORK(&bq->charge_jeita_work, bq2415x_charge_jeita_workfunc);
 	INIT_DELAYED_WORK(&bq->discharge_jeita_work, bq2415x_discharge_jeita_workfunc);
+	INIT_DELAYED_WORK(&bq->vbus_changed_work, bq2415x_vbus_changed_workfunc);
+
+	g_bq = bq;
 
 	alarm_init(&bq->jeita_alarm, ALARM_BOOTTIME, bq2415x_jeita_alarm_cb);
 
@@ -2041,6 +2010,7 @@ static int bq2415x_charger_probe(struct i2c_client *client,
 		dev_err(bq->dev, "failed to register sysfs. err: %d\n", ret);
 	}
 
+
 	determine_initial_status(bq);
 
 
@@ -2048,12 +2018,6 @@ static int bq2415x_charger_probe(struct i2c_client *client,
 				bq->part_no, bq->revision);
 	
 	return 0;
-	
-err_1:
-	bq2415x_psy_unregister(bq);
-	
-	return ret;
-
 }
 
 static inline bool is_device_suspended(struct bq2415x *bq)
@@ -2090,18 +2054,18 @@ static int bq2415x_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct bq2415x *bq = i2c_get_clientdata(client);
 
-
 	mutex_lock(&bq->irq_complete);
 	bq->resume_completed = true;
+	mutex_unlock(&bq->irq_complete);
+#if 0
+
 	if (bq->irq_waiting) {
 		bq->irq_disabled = false;
-		enable_irq(bq->vbus_irq_num);
 		mutex_unlock(&bq->irq_complete);
-		bq2415x_charger_interrupt(bq->vbus_irq_num, bq);
 	} else {
 		mutex_unlock(&bq->irq_complete);
 	}
-
+#endif
 	power_supply_changed(&bq->batt_psy);
 
 	return 0;
@@ -2115,6 +2079,7 @@ static int bq2415x_charger_remove(struct i2c_client *client)
 
 	cancel_delayed_work_sync(&bq->charge_jeita_work);
 	cancel_delayed_work_sync(&bq->discharge_jeita_work);
+	cancel_delayed_work_sync(&bq->vbus_changed_work);
 
 	regulator_unregister(bq->otg_vreg.rdev);
 	

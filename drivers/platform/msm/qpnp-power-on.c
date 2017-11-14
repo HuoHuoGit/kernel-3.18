@@ -693,6 +693,29 @@ int qpnp_pon_trigger_config(enum pon_trigger_source pon_src, bool enable)
 }
 EXPORT_SYMBOL(qpnp_pon_trigger_config);
 
+
+int qpnp_pon_get_cblpwr_status(bool *status)
+{
+	int rc;
+	struct qpnp_pon *pon = sys_reset_dev;
+	u8 pon_rt_sts = 0;
+
+	if (!pon)
+		return -EPROBE_DEFER;
+	/* check the RT status to get the current status of the line */
+	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
+				QPNP_PON_RT_STS(pon), &pon_rt_sts, 1);
+	if (rc) {
+		dev_err(&pon->spmi->dev, "Unable to read PON RT status\n");
+		return rc;
+	}
+
+	*status = !!(pon_rt_sts & QPNP_PON_CBLPWR_N_SET);
+	
+	return 0;
+}
+EXPORT_SYMBOL(qpnp_pon_get_cblpwr_status);
+
 /*
  * This function stores the PMIC warm reset reason register values. It also
  * clears these registers if the qcom,clear-warm-reset device tree property
@@ -844,6 +867,7 @@ static irqreturn_t qpnp_kpdpwr_resin_bark_irq(int irq, void *_pon)
 	return IRQ_HANDLED;
 }
 
+void bq2415x_cblpwr_changed(void);
 static irqreturn_t qpnp_cblpwr_irq(int irq, void *_pon)
 {
 	int rc;
@@ -852,6 +876,8 @@ static irqreturn_t qpnp_cblpwr_irq(int irq, void *_pon)
 	rc = qpnp_pon_input_dispatch(pon, PON_CBLPWR);
 	if (rc)
 		dev_err(&pon->spmi->dev, "Unable to send input event\n");
+
+	bq2415x_cblpwr_changed();
 
 	return IRQ_HANDLED;
 }
