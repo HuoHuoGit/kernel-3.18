@@ -243,6 +243,11 @@ static void usb_pd_pm_update_fc_status(void)
 		pm_state.bq2597x.die_therm_fault = !!(val.intval & DIE_THERM_FAULT_MASK);
 	}
 
+	ret = pm_state.fc_psy->get_property(pm_state.fc_psy, POWER_SUPPLY_PROP_TI_REG_STATUS, &val);
+	if (!ret) {
+		pm_state.bq2597x.vbat_reg = !!(val.intval & VBAT_REG_STATUS_MASK);
+		pm_state.bq2597x.ibat_reg = !!(val.intval & IBAT_REG_STATUS_MASK);
+	}
 }
 
 
@@ -476,6 +481,8 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
 /*    int step_vbus = 0;*/
     int step_ibus = 0;
     int step_ibat = 0;
+    int step_bat_reg = 0;
+
     static int ibus_limit;
 
     if (ibus_limit == 0)
@@ -485,11 +492,15 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
 	ibus_limit = pm_state.ibus_lmt_curr * 90 / 100;
     else if (pm_state.bq2597x.vbat_volt < sys_config.bat_volt_lp_lmt - 250)
 	ibus_limit = pm_state.ibus_lmt_curr * 110 / 100;
- 
+
+#if 1
     if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt)
 	step_vbat = sys_config.flash2_policy.down_steps;
     else if (pm_state.bq2597x.vbat_volt < sys_config.bat_volt_lp_lmt - 5)
 	step_vbat = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
+#else
+    step_vbat = 1;
+#endif
 
     if (pm_state.bq2597x.ibat_curr < sys_config.bat_curr_lp_lmt )
         step_ibat = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
@@ -501,7 +512,13 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
     else if (pm_state.bq2597x.ibus_curr > ibus_limit + 100)
 	step_ibus = sys_config.flash2_policy.down_steps;
 
+    if (pm_state.bq2597x.vbat_reg || pm_state.bq2597x.ibat_reg)
+	step_bat_reg = 5 * sys_config.flash2_policy.down_steps;
+    else
+	step_bat_reg = 1;
+
     sw_ctrl_steps = min(min(step_vbat, step_ibus), step_ibat);
+    sw_ctrl_steps = min(sw_ctrl_steps, step_bat_reg);
 
     if (pm_state.bq2597x.bat_ocp_alarm 
 		/*|| pm_state.bq2597x.bat_ovp_alarm */
@@ -514,16 +531,17 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
 	hw_ctrl_steps = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
     }
 
+    usb_pd_pm_check_fc_enabled();
+
     if (pm_state.bq2597x.bat_therm_fault ) // battery overheat, stop charge
         return -1;
-    else if (pm_state.bq2597x.bus_therm_fault 
-		|| pm_state.bq2597x.die_therm_fault)
-        return -2; // goto switch mode, and never go to flash charge
     else if (pm_state.bq2597x.bat_ocp_fault 
 		|| pm_state.bq2597x.bus_ocp_fault 
 		||pm_state.bq2597x.bat_ovp_fault 
 		|| pm_state.bq2597x.bus_ovp_fault)
         return 2; // go to switch, and try to ramp up if ok
+    else if (!pm_state.bq2597x.charge_enabled)
+	return -2;
 
     if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt - 50 &&
             pm_state.bq2597x.ibat_curr < sys_config.fc2_taper_current)
@@ -532,8 +550,8 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
 
     steps = min(sw_ctrl_steps, hw_ctrl_steps);
 
-    pr_debug("step_vbat=%d, step_ibat=%d, step_ibus = %d, hw_ctrl_steps=%d, adjust step= %d\n", 
-		step_vbat, step_ibat, step_ibus,hw_ctrl_steps, steps);
+    pr_debug("step_vbat=%d, step_ibat=%d, step_ibus = %d, hw_ctrl_steps=%d, step_bat_reg = %d, adjust step= %d\n", 
+		step_vbat, step_ibat, step_ibus,hw_ctrl_steps, step_bat_reg, steps);
 
     pm_state.request_volt = pm_state.request_volt + steps * 20;
 
@@ -564,7 +582,7 @@ const unsigned char *pm_state_str[] = {
 
 static void usb_pd_pm_move_state(pm_sm_state_t state)
 {
-#if 1
+#if 0
     pr_debug("pm_state change:%s -> %s\n", 
 		pm_state_str[pm_state.state], pm_state_str[state]);
     pm_state.state_log[pm_state.log_idx] = pm_state.state;
@@ -1053,12 +1071,13 @@ void build_rdo(unsigned int port)
 static void usb_pd_pm_workfunc(struct work_struct *work)
 {
 
+	schedule_delayed_work(&pm_state.pm_work, msecs_to_jiffies(50));
+
 	usb_pd_pm_update_sw_status();
 	usb_pd_pm_update_fc_status();
 
 	usb_pd_pm_statemachine(0);
 
-	schedule_delayed_work(&pm_state.pm_work, msecs_to_jiffies(50));
 }
 
 void usb_pd_print_version(void)

@@ -71,6 +71,12 @@ typedef enum  {
 #define	DIE_THERM_ALARM_MASK		(1 << DIE_THERM_ALARM_SHIFT)
 #define	BAT_UCP_ALARM_MASK		(1 << BAT_UCP_ALARM_SHIFT)
 
+#define VBAT_REG_STATUS_SHIFT			0
+#define IBAT_REG_STATUS_SHIFT			1
+
+#define VBAT_REG_STATUS_MASK		(1 << VBAT_REG_STATUS_SHIFT)
+#define IBAT_REG_STATUS_MASK		(1 << VBAT_REG_STATUS_SHIFT)
+
 
 struct flash2_policy {
 	
@@ -143,6 +149,9 @@ struct bq2597x {
 
 	bool therm_shutdown_flag;
 	bool therm_shutdown_stat;
+
+	bool vbat_reg;
+	bool ibat_reg;
 
 	int  vout_volt;
 	int  vbat_volt;

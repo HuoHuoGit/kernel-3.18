@@ -275,6 +275,7 @@ static struct device_attribute power_supply_attrs[] = {
 
 	POWER_SUPPLY_ATTR(ti_alarm_status),
 	POWER_SUPPLY_ATTR(ti_fault_status),
+	POWER_SUPPLY_ATTR(ti_reg_status),
 };
 
 static struct attribute *

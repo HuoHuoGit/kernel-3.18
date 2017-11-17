@@ -11,7 +11,7 @@
  * WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#define pr_fmt(fmt)	"bq2597x: %s: " fmt, __func__
+#define pr_fmt(fmt)	"[bq2597x] %s: " fmt, __func__
 
 #include <linux/gpio.h>
 #include <linux/i2c.h>
@@ -38,16 +38,10 @@
 #include "bq25970_reg.h"
 /*#include "bq2597x.h"*/
 
-#if 1
+#ifdef pr_debug
 #undef pr_debug
 #define pr_debug pr_err
-#undef pr_info
-#define pr_info pr_err
-#undef dev_dbg
-#define dev_dbg dev_err
-#else
-#undef pr_info
-#define pr_info pr_debug
+
 #endif
 
 enum {
@@ -120,6 +114,12 @@ enum {
 #define	BUS_THERM_ALARM_MASK		(1 << BUS_THERM_ALARM_SHIFT)
 #define	DIE_THERM_ALARM_MASK		(1 << DIE_THERM_ALARM_SHIFT)
 #define	BAT_UCP_ALARM_MASK		(1 << BAT_UCP_ALARM_SHIFT)
+
+#define VBAT_REG_STATUS_SHIFT			0
+#define IBAT_REG_STATUS_SHIFT			1
+
+#define VBAT_REG_STATUS_MASK		(1 << VBAT_REG_STATUS_SHIFT)
+#define IBAT_REG_STATUS_MASK		(1 << VBAT_REG_STATUS_SHIFT)
 /*end*/
 
 struct bq2597x_cfg {
@@ -216,6 +216,9 @@ struct bq2597x {
 
 	bool therm_shutdown_flag;
 	bool therm_shutdown_stat;
+
+	bool vbat_reg;
+	bool ibat_reg;
 
 	int  prev_alarm;
 	int  prev_fault;
@@ -764,6 +767,43 @@ static int bq2597x_set_acovp_th(struct bq2597x *bq, int threshold)
 }
 EXPORT_SYMBOL_GPL(bq2597x_set_acovp_th);
 
+static int bq2597x_set_vdrop_th(struct bq2597x *bq, int threshold)
+{
+	int ret;
+	u8 val;
+
+	if (threshold == 300)
+		val = BQ2597X_VDROP_THRESHOLD_300MV;
+	else
+		val = BQ2597X_VDROP_THRESHOLD_400MV;
+
+	val <<= BQ2597X_VDROP_THRESHOLD_SET_SHIFT;
+
+	ret = bq2597x_update_bits(bq, BQ2597X_REG_05,
+				BQ2597X_VDROP_THRESHOLD_SET_MASK,
+				val);
+	
+	return ret;
+}
+
+static int bq2597x_set_vdrop_deglitch(struct bq2597x *bq, int us)
+{
+	int ret;
+	u8 val;
+
+	if (us == 8)
+		val = BQ2597X_VDROP_DEGLITCH_8US;
+	else
+		val = BQ2597X_VDROP_DEGLITCH_5MS;
+	
+	val <<= BQ2597X_VDROP_DEGLITCH_SET_SHIFT;
+
+	ret = bq2597x_update_bits(bq, BQ2597X_REG_05,
+				BQ2597X_VDROP_DEGLITCH_SET_MASK,
+				val);
+	return ret;
+}
+
 static int bq2597x_enable_bat_therm(struct bq2597x *bq, bool enable)
 {
 	int ret;
@@ -1076,6 +1116,134 @@ static int bq2597x_set_sense_resistor(struct bq2597x *bq, int r_mohm)
 	return ret;
 }
 
+static int bq2597x_enable_regulation(struct bq2597x *bq, bool enable)
+{
+	int ret;
+	u8 val;
+
+	if (enable)
+		val = BQ2597X_EN_REGULATION_ENABLE;
+	else
+		val = BQ2597X_EN_REGULATION_DISABLE;
+	
+	val <<= BQ2597X_EN_REGULATION_SHIFT;
+
+	ret = bq2597x_update_bits(bq, BQ2597X_REG_2B,
+				BQ2597X_EN_REGULATION_MASK,
+				val);
+	
+	return ret;
+	
+}
+
+
+static int bq2597x_set_ss_timeout(struct bq2597x *bq, int timeout)
+{
+	int ret;
+	u8 val;
+
+	switch (timeout) {
+	case 0:
+		val = BQ2597X_SS_TIMEOUT_DISABLE;
+		break;
+	case 12:
+		val = BQ2597X_SS_TIMEOUT_DISABLE;
+		break;
+	case 25:
+		val = BQ2597X_SS_TIMEOUT_DISABLE;
+		break;
+	case 50:
+		val = BQ2597X_SS_TIMEOUT_DISABLE;
+		break;
+	case 100:
+		val = BQ2597X_SS_TIMEOUT_DISABLE;
+		break;
+	case 400:
+		val = BQ2597X_SS_TIMEOUT_DISABLE;
+		break;
+	case 1500:
+		val = BQ2597X_SS_TIMEOUT_DISABLE;
+		break;
+	case 100000:
+		val = BQ2597X_SS_TIMEOUT_DISABLE;
+		break;
+	default:
+		val = BQ2597X_SS_TIMEOUT_DISABLE;
+		break;
+	}
+
+	val <<= BQ2597X_SS_TIMEOUT_SET_SHIFT;
+
+	ret = bq2597x_update_bits(bq, BQ2597X_REG_2B,
+				BQ2597X_SS_TIMEOUT_SET_MASK,
+				val);
+	
+	return ret;
+}
+
+static int bq2597x_set_ibat_reg_th(struct bq2597x *bq, int th_ma)
+{
+	int ret;
+	u8 val;
+
+	if (th_ma == 200)
+		val = BQ2597X_IBAT_REG_200MA;
+	else if (th_ma == 300)
+		val = BQ2597X_IBAT_REG_300MA;
+	else if (th_ma == 400)
+		val = BQ2597X_IBAT_REG_400MA;
+	else if (th_ma == 500)
+		val = BQ2597X_IBAT_REG_500MA;
+	else
+		val = BQ2597X_IBAT_REG_500MA;
+	
+	val <<= BQ2597X_IBAT_REG_SHIFT;
+	ret = bq2597x_update_bits(bq, BQ2597X_REG_2C,
+				BQ2597X_IBAT_REG_MASK,
+				val);
+
+	return ret;
+
+}
+
+static int bq2597x_set_vbat_reg_th(struct bq2597x *bq, int th_mv)
+{
+	int ret;
+	u8 val;
+
+	if (th_mv == 50)
+		val = BQ2597X_VBAT_REG_50MV;
+	else if (th_mv == 100)
+		val = BQ2597X_VBAT_REG_100MV;
+	else if (th_mv == 150)
+		val = BQ2597X_VBAT_REG_150MV;
+	else 
+		val = BQ2597X_VBAT_REG_200MV;
+	
+	val <<= BQ2597X_VBAT_REG_SHIFT;
+
+	ret = bq2597x_update_bits(bq, BQ2597X_REG_2C,
+				BQ2597X_VBAT_REG_MASK,
+				val);
+
+	return ret;
+}
+
+
+static int bq2597x_check_reg_status(struct bq2597x *bq)
+{
+	int ret;
+	u8 val;
+
+	ret = bq2597x_read_byte(bq, BQ2597X_REG_2C, &val);
+	if (!ret) {
+		bq->vbat_reg = !!(val & BQ2597X_VBAT_REG_ACTIVE_STAT_MASK);
+		bq->ibat_reg = !!(val & BQ2597X_IBAT_REG_ACTIVE_STAT_MASK);
+	}
+	
+	return ret;
+}
+
 static int bq2597x_detect_device(struct bq2597x *bq)
 {
 	int ret;
@@ -1375,15 +1543,31 @@ static int bq2597x_init_int_src(struct bq2597x *bq)
 	return ret;
 }
 
+static int bq2597x_init_regulation(struct bq2597x *bq)
+{
+	bq2597x_set_ibat_reg_th(bq, 300);
+	bq2597x_set_vbat_reg_th(bq, 100);
+
+	bq2597x_set_vdrop_deglitch(bq, 5000);
+	bq2597x_set_vdrop_th(bq,400);
+
+	bq2597x_enable_regulation(bq, true);
+	
+	return 0;
+}
+
 static int bq2597x_init_device(struct bq2597x *bq)
 {
 	bq2597x_enable_wdt(bq, false);
 
+	bq2597x_set_ss_timeout(bq, 50);
 	bq2597x_set_sense_resistor(bq, bq->cfg->sense_r_mohm);
 
 	bq2597x_init_protection(bq);
 	bq2597x_init_adc(bq);
 	bq2597x_init_int_src(bq);
+	
+	bq2597x_init_regulation(bq);
 
 	return 0;
 }
@@ -1468,7 +1652,7 @@ static enum power_supply_property bq2597x_charger_props[] = {
 	POWER_SUPPLY_PROP_TI_DIE_TEMPERATURE,
 	POWER_SUPPLY_PROP_TI_ALARM_STATUS,
 	POWER_SUPPLY_PROP_TI_FAULT_STATUS,
-
+	POWER_SUPPLY_PROP_TI_REG_STATUS,
 
 };
 
@@ -1576,7 +1760,11 @@ static int bq2597x_charger_get_property(struct power_supply *psy,
 			| (bq->die_therm_fault << DIE_THERM_FAULT_SHIFT));
 		break;
 
-
+	case POWER_SUPPLY_PROP_TI_REG_STATUS:
+		bq2597x_check_reg_status(bq);
+		val->intval = (bq->vbat_reg << VBAT_REG_STATUS_SHIFT) |
+				(bq->ibat_reg << IBAT_REG_STATUS_SHIFT);
+		break;
 	default:
 		return -EINVAL;
 
@@ -1665,6 +1853,7 @@ static void bq2597x_dump_reg(struct bq2597x *bq)
 	}
 
 }
+EXPORT_SYMBOL_GPL(bq2597x_dump_reg);
 /*
  * update alarm or fault status, PD policy manager will process the events
  */
@@ -1676,13 +1865,24 @@ static void bq2597x_update_status(struct bq2597x *bq)
 	bool changed = false;
 
 	mutex_lock(&bq->data_lock);
+
+	
+	ret = bq2597x_read_byte(bq, BQ2597X_REG_08, &flag);
+	if (!ret && (flag & BQ2597X_IBUS_UCP_FALL_FLAG_MASK))
+		pr_debug("UCP_FLAG =0x%02X\n", !!(flag & BQ2597X_IBUS_UCP_FALL_FLAG_MASK));
+	
+
+	ret = bq2597x_read_byte(bq, BQ2597X_REG_2D, &flag);
+	if (!ret && (flag &BQ2597X_VDROP_OVP_FLAG_MASK))
+		pr_debug("VDROP_OVP_FLAG =0x%02X\n", !!(flag & BQ2597X_VDROP_OVP_FLAG_MASK));
 	/*read to clear alarm flag*/
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_0E, &flag);
 	if (!ret && flag)
-		pr_err("INT_FLAG =0x%02X\n", flag);
+		pr_debug("INT_FLAG =0x%02X\n", flag);
 
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_0D, &stat);
 	if (!ret && stat != bq->prev_alarm) {
+		pr_debug("INT_STAT = 0X%02x\n", stat);
 		changed = true;
 		bq->prev_alarm = stat;
 		bq->bat_ovp_alarm = !!(stat & BAT_OVP_ALARM);
@@ -1694,11 +1894,23 @@ static void bq2597x_update_status(struct bq2597x *bq)
 		bq->bat_ucp_alarm = !!(stat & BAT_UCP_ALARM);
 	}
 
+	
+	ret = bq2597x_read_byte(bq, BQ2597X_REG_08, &stat);
+	if (!ret && (stat & 0x50))
+		pr_err("Reg[05]BUS_UCPOVP = 0x%02X\n", stat);
+	
+	ret = bq2597x_read_byte(bq, BQ2597X_REG_0A, &stat);
+	if (!ret && (stat & 0x02))
+		pr_err("Reg[0A]CONV_OCP = 0x%02X\n", stat);
+		
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_10, &stat);
 	if (!ret && stat)
 		pr_err("FAULT_STAT = 0x%02X\n", stat);
 
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_11, &flag);
+	if (!ret && flag)
+		pr_err("FAULT_FLAG = 0x%02X\n", flag);
+
 	if (!ret && flag != bq->prev_fault) {
 		changed = true;
 		bq->prev_fault = flag;
@@ -1726,8 +1938,7 @@ static irqreturn_t bq2597x_charger_interrupt(int irq, void *dev_id)
 {
 	struct bq2597x *bq = dev_id;
 
-	pr_err("enter");
-
+	pr_debug("enter");
 	mutex_lock(&bq->irq_complete);
 	bq->irq_waiting = true;
 	if (!bq->resume_completed) {
@@ -1743,9 +1954,9 @@ static irqreturn_t bq2597x_charger_interrupt(int irq, void *dev_id)
 
 	/* TODO */
 	bq2597x_update_status(bq);
-
+#if 0
 	bq2597x_dump_reg(bq);
-
+#endif
 	mutex_unlock(&bq->irq_complete);
 
 	pr_err("alarm stat=0x%02X, fault flag =0x%02X\n", bq->prev_alarm, bq->prev_fault);
