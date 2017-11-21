@@ -97,6 +97,9 @@ static const struct sys_config sys_config = {
 static adapter_t adapter;
 static pm_t pm_state;
 
+static int fc2_taper_timer;
+static int ibus_lmt_change_timer;
+
 static usb_pd_port_config_t pd_port_config[NUM_TCPC_DEVICES];  
 
 usb_pd_port_config_t* usb_pd_pm_get_config(unsigned int port)
@@ -470,10 +473,11 @@ static uint8_t get_volt_increase_steps(uint16_t vbat)
 	return 1;
 }
 
+#define TAPER_TIMEOUT	50
+#define IBUS_CHANGE_TIMEOUT  5
 static int usb_pd_pm_flash2_charge(unsigned int port)
 {
     usb_pd_port_t *dev = usb_pd_pe_get_device(port);
-
     int steps;
     int sw_ctrl_steps = 0;
     int hw_ctrl_steps = 0;
@@ -488,15 +492,22 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
     if (ibus_limit == 0)
 	ibus_limit = pm_state.ibus_lmt_curr * 110 / 100;
 
-    if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt - 50)
-	ibus_limit = pm_state.ibus_lmt_curr * 90 / 100;
-    else if (pm_state.bq2597x.vbat_volt < sys_config.bat_volt_lp_lmt - 250)
+    if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt - 50) {
+	if (ibus_lmt_change_timer++ > IBUS_CHANGE_TIMEOUT) {
+		ibus_lmt_change_timer = 0;
+		ibus_limit = pm_state.ibus_lmt_curr * 90 / 100;
+	}
+    } else if (pm_state.bq2597x.vbat_volt < sys_config.bat_volt_lp_lmt - 250) {
 	ibus_limit = pm_state.ibus_lmt_curr * 110 / 100;
+	ibus_lmt_change_timer = 0;
+    } else {
+	ibus_lmt_change_timer = 0;
+    }
 
 #if 1
     if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt)
 	step_vbat = sys_config.flash2_policy.down_steps;
-    else if (pm_state.bq2597x.vbat_volt < sys_config.bat_volt_lp_lmt - 5)
+    else if (pm_state.bq2597x.vbat_volt < sys_config.bat_volt_lp_lmt - 7)
 	step_vbat = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
 #else
     step_vbat = 1;
@@ -507,9 +518,9 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
     else if (pm_state.bq2597x.ibat_curr > sys_config.bat_curr_lp_lmt + 100)
         step_ibat = sys_config.flash2_policy.down_steps;
 
-    if (pm_state.bq2597x.ibus_curr < ibus_limit + 50)
+    if (pm_state.bq2597x.ibus_curr < ibus_limit - 50)
 	step_ibus = get_volt_increase_steps(pm_state.bq2597x.vbat_volt);
-    else if (pm_state.bq2597x.ibus_curr > ibus_limit + 100)
+    else if (pm_state.bq2597x.ibus_curr > ibus_limit)
 	step_ibus = sys_config.flash2_policy.down_steps;
 
     if (pm_state.bq2597x.vbat_reg || pm_state.bq2597x.ibat_reg)
@@ -544,9 +555,15 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
 	return -2;
 
     if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt - 50 &&
-            pm_state.bq2597x.ibat_curr < sys_config.fc2_taper_current)
-        return 1; // goto switch, never go to flash charge
-
+            pm_state.bq2597x.ibat_curr < sys_config.fc2_taper_current) {
+	    if (fc2_taper_timer++ > TAPER_TIMEOUT) {
+		fc2_taper_timer = 0;
+		return 1;
+	    }
+    } else {
+	fc2_taper_timer = 0;
+    }
+	    
 
     steps = min(sw_ctrl_steps, hw_ctrl_steps);
 
@@ -754,6 +771,8 @@ void usb_pd_pm_statemachine(unsigned int port)
                 if (pm_state.bq2597x.charge_enabled)
                     usb_pd_pm_move_state(PD_PM_STATE_FLASH2_GET_PPS_STATUS);
             }
+	    ibus_lmt_change_timer = 0;
+	    fc2_taper_timer = 0;
         }
         break;
     case PD_PM_STATE_FLASH2_GET_PPS_STATUS:
