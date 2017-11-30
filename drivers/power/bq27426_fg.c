@@ -232,6 +232,10 @@ struct bq_fg_chip {
 
 	int batt_cyclecnt;	/* cycle count */
 
+	int soc_smoothed;
+	bool soc_smooth_enabled;
+
+	struct delayed_work soc_smooth_work;
 
 	struct work_struct update_work;
 	
@@ -249,7 +253,7 @@ struct bq_fg_chip {
 	struct power_supply fg_psy;
 
 	struct qpnp_vadc_chip	*vadc_dev;
-	struct regulator		*vdd;
+	struct regulator	*vdd;
 	u32	connected_rid;
 };
 
@@ -894,9 +898,9 @@ static int fg_read_status(struct bq_fg_chip *bq)
 
 	mutex_lock(&bq->data_lock);
 	bq->batt_present	= !!(flags & FG_FLAGS_BAT_DET);
-	bq->batt_ot			= !!(flags & FG_FLAGS_OT);
-	bq->batt_ut			= !!(flags & FG_FLAGS_UT);
-	bq->batt_fc			= !!(flags & FG_FLAGS_FC);
+	bq->batt_ot		= !!(flags & FG_FLAGS_OT);
+	bq->batt_ut		= !!(flags & FG_FLAGS_UT);
+	bq->batt_fc		= !!(flags & FG_FLAGS_FC);
 	bq->batt_soc1		= !!(flags & FG_FLAGS_SOC1);
 	bq->batt_socf		= !!(flags & FG_FLAGS_SOCF);
 	bq->batt_dsg		= !!(flags & FG_FLAGS_DSG);
@@ -1126,6 +1130,167 @@ static void parse_dt(struct bq_fg_chip *bq)
 }
 #endif
 
+static int fg_read_batt_prop(enum power_supply_property psp, int *retval)
+{
+	static struct power_supply *batt_psy;
+	union power_supply_propval val;
+	int ret;
+
+	if (!batt_psy)
+		batt_psy = power_supply_get_by_name("battery");
+	if (!batt_psy) 
+		return -ENODEV;
+	
+	ret = batt_psy->get_property(batt_psy, psp, &val);
+	
+	if (!ret)
+		*retval = val.intval;
+	
+	return ret;
+}
+
+#define	BATT_LOW_VOLT	3500
+#define BATT_LOW_RSOC	8
+static void fg_smooth_soc(struct bq_fg_chip *bq, bool smooth, int soc_fg, int batt_status)
+{
+	static int batt_status_last = -EINVAL;
+	static unsigned long jiffies_last = -EINVAL;
+	static unsigned long jiffies_sm_reverse;
+	static int sm_reverse;
+
+	int batt_volt;
+	int sm_interval;
+	int ret;
+
+	if (jiffies_last == -EINVAL || batt_status == -EINVAL) {
+		jiffies_last = jiffies;
+		batt_status_last = batt_status;
+	}
+
+	if (!smooth) {
+		bq->soc_smoothed = soc_fg;
+		jiffies_last = jiffies;
+		batt_status_last = batt_status;
+		return;
+	}
+
+	if (batt_status != batt_status_last) {
+		batt_status_last = batt_status;
+		return;
+	}
+	
+	ret = fg_read_batt_prop(POWER_SUPPLY_PROP_VOLTAGE_NOW,
+				&batt_volt);
+	if (ret < 0)
+		return;
+
+	if (batt_volt < BATT_LOW_VOLT || bq->soc_smoothed < BATT_LOW_RSOC
+		|| batt_status == POWER_SUPPLY_STATUS_FULL)
+		sm_interval = 10;
+	else
+		sm_interval = 30;
+
+	if (time_before(jiffies, jiffies_last + sm_interval * HZ))
+		return;
+
+	pr_debug("sm_interval = %ds\n", sm_interval);
+
+	if (batt_status == POWER_SUPPLY_STATUS_CHARGING ||
+		batt_status == POWER_SUPPLY_STATUS_FULL) {
+		if (bq->soc_smoothed < soc_fg) {
+			bq->soc_smoothed++;
+			sm_reverse = 0;
+		} else { /*rsoc jump followed by status change*/
+			if (sm_reverse != 1) {
+				jiffies_sm_reverse = jiffies;
+				sm_reverse = 1;
+			}
+		}
+			
+	} else if (batt_status == POWER_SUPPLY_STATUS_DISCHARGING) {
+		if (bq->soc_smoothed > soc_fg) {
+			bq->soc_smoothed--;
+			sm_reverse = 0;
+		} else {/*rsoc jump followed by status change*/
+
+			if (sm_reverse != -1) {
+				jiffies_sm_reverse = jiffies;
+				sm_reverse = -1;
+			}
+		}
+	}
+
+	if (sm_reverse 
+		&& time_after(jiffies, jiffies_sm_reverse + 300 * HZ)) {
+		bq->soc_smoothed += sm_reverse;
+		jiffies_sm_reverse = jiffies;
+	}
+
+	jiffies_last = jiffies;
+}
+
+
+#define PCT99_HOLD_MAX_TIME	300	/*300s*/
+static void bq_fg_soc_smooth_workfunc(struct work_struct *work)
+{
+	struct bq_fg_chip *bq = container_of(work, 
+				struct bq_fg_chip, soc_smooth_work.work);
+	int ret;
+	int soc_fg;
+	int soc_gap;
+	static bool pct99_timer_running;
+	static bool pct99_timeout;
+	unsigned long pct99_start_jiffies;
+	int batt_status_now;
+
+	soc_fg = fg_read_rsoc(bq);
+	if (soc_fg < 0)
+		return;
+
+	if (bq->soc_smoothed == -EINVAL)
+		bq->soc_smoothed = soc_fg;
+
+	ret = fg_read_batt_prop(POWER_SUPPLY_PROP_STATUS, &batt_status_now);
+	if(ret < 0)
+		return;
+
+	if (soc_fg == 99 && !pct99_timer_running
+		&& batt_status_now == POWER_SUPPLY_STATUS_CHARGING ) {
+		pct99_timer_running = true;
+		pct99_timeout = false;
+		pct99_start_jiffies = jiffies;
+		pr_debug("pct99 hold timer started\n");
+	} else if (soc_fg != 99 
+		|| batt_status_now != POWER_SUPPLY_STATUS_CHARGING) {
+		pct99_timeout = false;
+		pct99_timer_running = false;
+		pr_debug("pct99 hold timer cleared\n");
+	}
+	
+	if (pct99_timer_running && !pct99_timeout 
+		&& time_after(jiffies, pct99_start_jiffies + PCT99_HOLD_MAX_TIME * HZ)) { 
+		pct99_timeout = true;
+		pct99_timer_running = false;
+		bq->soc_smoothed = 100;
+		pr_debug("pct99 hold timer timeout\n");
+	}
+
+	soc_gap = bq->soc_smoothed - soc_fg;
+	pr_debug("soc gap before smooth:%d\n", soc_gap);
+	/* if pct99 timer is expired, bq->soc_smoothed is forced to be 100
+	 * which might be greater than soc_fg, don't set it back
+	 */
+	if (abs(soc_gap) <= 1 && !pct99_timeout)
+		fg_smooth_soc(bq, false, soc_fg, batt_status_now);
+	else if (abs(soc_gap) > 1) 
+		fg_smooth_soc(bq, true, soc_fg, batt_status_now);
+	
+	pr_debug("soc_gap after smooth:%d\n", (int)abs(soc_fg - bq->soc_smoothed));
+	pr_debug("soc_fg=%d\n, soc_smoothed=%d\n", soc_fg, bq->soc_smoothed);
+
+	schedule_delayed_work(&bq->soc_smooth_work, 10 * HZ);
+}
+
 static enum power_supply_property fg_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_PRESENT,
@@ -1180,7 +1345,17 @@ static int fg_get_property(struct power_supply *psy, enum power_supply_property 
 			val->intval = bq->fake_soc;
 			break;
 		}
-		ret = fg_read_rsoc(bq);
+		if (bq->soc_smooth_enabled) {
+			cancel_delayed_work(&bq->soc_smooth_work);
+			schedule_delayed_work(&bq->soc_smooth_work, 0);
+			if (bq->soc_smoothed != -EINVAL)
+				ret = bq->soc_smoothed;
+			else
+				ret = fg_read_rsoc(bq);
+
+		} else {
+			ret = fg_read_rsoc(bq);
+		}
 		mutex_lock(&bq->data_lock);
 		if (ret >= 0)
 			bq->batt_soc = ret;
@@ -1941,7 +2116,7 @@ static int bq_parse_dt(struct bq_fg_chip *bq)
 }
 
 static int bq_fg_probe(struct i2c_client *client, 
-							const struct i2c_device_id *id)
+			const struct i2c_device_id *id)
 {
 
 	int ret;
@@ -2027,6 +2202,8 @@ static int bq_fg_probe(struct i2c_client *client,
 
 	bq->fw_ver = fg_read_fw_version(bq);
 
+	INIT_DELAYED_WORK(&bq->soc_smooth_work, bq_fg_soc_smooth_workfunc);
+
 	fg_psy_register(bq);
 
 	create_debugfs_entry(bq);
@@ -2037,6 +2214,9 @@ static int bq_fg_probe(struct i2c_client *client,
 
 	determine_initial_status(bq);
 
+	bq->soc_smooth_enabled = true;
+
+	schedule_delayed_work(&bq->soc_smooth_work, HZ);
 	pr_err("bq fuel gauge probe successfully, %s FW ver:%d\n", 
 			device2str[bq->chip], bq->fw_ver);
 
@@ -2106,6 +2286,8 @@ static int bq_fg_resume(struct device *dev)
 static int bq_fg_remove(struct i2c_client *client)
 {
 	struct bq_fg_chip *bq = i2c_get_clientdata(client);
+
+	cancel_delayed_work_sync(&bq->soc_smooth_work);
 
 	fg_psy_unregister(bq);
 
