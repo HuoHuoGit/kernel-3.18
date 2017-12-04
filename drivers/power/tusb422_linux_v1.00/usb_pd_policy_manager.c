@@ -222,7 +222,7 @@ static void usb_pd_pm_update_fc_status(void)
 	ret = pm_state.fc_psy->get_property(pm_state.fc_psy, POWER_SUPPLY_PROP_CHARGE_ENABLED, &val);
 	if (!ret)
 		pm_state.bq2597x.charge_enabled = val.intval;
-	
+
 	ret = pm_state.fc_psy->get_property(pm_state.fc_psy, POWER_SUPPLY_PROP_TI_ALARM_STATUS, &val);
 	if (!ret) {
 		pm_state.bq2597x.bat_ovp_alarm = !!(val.intval & BAT_OVP_ALARM_MASK); 
@@ -566,10 +566,10 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
 	    
 
     steps = min(sw_ctrl_steps, hw_ctrl_steps);
-
+#if 0
     pr_debug("step_vbat=%d, step_ibat=%d, step_ibus = %d, hw_ctrl_steps=%d, step_bat_reg = %d, adjust step= %d\n", 
 		step_vbat, step_ibat, step_ibus,hw_ctrl_steps, step_bat_reg, steps);
-
+#endif
     pm_state.request_volt = pm_state.request_volt + steps * 20;
 
     if (pm_state.request_volt > dev->apdo_max_volt)
@@ -1090,12 +1090,14 @@ void build_rdo(unsigned int port)
 static void usb_pd_pm_workfunc(struct work_struct *work)
 {
 
-	schedule_delayed_work(&pm_state.pm_work, msecs_to_jiffies(50));
-
-	usb_pd_pm_update_sw_status();
-	usb_pd_pm_update_fc_status();
+	if (pm_state.state !=  PD_PM_STATE_FLASH2_GET_PPS_STATUS) {
+		usb_pd_pm_update_sw_status();
+		usb_pd_pm_update_fc_status();
+	}
 
 	usb_pd_pm_statemachine(0);
+
+	schedule_delayed_work(&pm_state.pm_work, msecs_to_jiffies(60));
 
 }
 

@@ -57,7 +57,7 @@
 
 /* Uncomment the following line to use real-time priority kernel thread
  * instead of high-priority workqueue for processing */
-//#define TUSB422_KTHREAD
+#define TUSB422_KTHREAD
 
 /* Uncomment the following line to delay the start of IRQ processing to allow 
  * other drivers to load first. Delay time is defined as START_WORK_DELAY. 
@@ -67,7 +67,7 @@
 
 /* Uncomment the following line to enable CPU idle polling for a fixed period 
  * after an interrupt is serviced to reduce latency due to CPU wakeup */
-//#define TUSB422_CPU_POLL_CTRL
+#define TUSB422_CPU_POLL_CTRL
 #define CPU_POLL_CTRL_TIMEOUT	msecs_to_jiffies(50)
 
 /* Remove the following line to disable sysfs debug */

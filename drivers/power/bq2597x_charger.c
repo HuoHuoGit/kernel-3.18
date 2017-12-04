@@ -1656,7 +1656,8 @@ static enum power_supply_property bq2597x_charger_props[] = {
 
 };
 
-static void bq2597x_update_status(struct bq2597x *bq);
+static void bq2597x_check_alarm_status(struct bq2597x *bq);
+static void bq2597x_check_fault_status(struct bq2597x *bq);
 
 static int bq2597x_charger_get_property(struct power_supply *psy,
 				enum power_supply_property psp,
@@ -1733,11 +1734,8 @@ static int bq2597x_charger_get_property(struct power_supply *psy,
 		val->intval = bq->die_temp;
 		break;
 	case POWER_SUPPLY_PROP_TI_ALARM_STATUS:
-		/* call bq2597x_update_status to get recent status/flag
-		 * alarm/fault clear would not trigger interrupt, so to
-		 * to read to again to reflect current status.
-		 * */
-		bq2597x_update_status(bq);
+
+//		bq2597x_check_alarm_status(bq);
 
 		val->intval = ((bq->bat_ovp_alarm << BAT_OVP_ALARM_SHIFT)
 			| (bq->bat_ocp_alarm << BAT_OCP_ALARM_SHIFT)
@@ -1750,7 +1748,8 @@ static int bq2597x_charger_get_property(struct power_supply *psy,
 		break;
 
 	case POWER_SUPPLY_PROP_TI_FAULT_STATUS:
-		bq2597x_update_status(bq);
+//		bq2597x_check_fault_status(bq);
+
 		val->intval = ((bq->bat_ovp_fault << BAT_OVP_FAULT_SHIFT)
 			| (bq->bat_ocp_fault << BAT_OCP_FAULT_SHIFT)
 			| (bq->bus_ovp_fault << BUS_OVP_FAULT_SHIFT)
@@ -1854,10 +1853,9 @@ static void bq2597x_dump_reg(struct bq2597x *bq)
 
 }
 EXPORT_SYMBOL_GPL(bq2597x_dump_reg);
-/*
- * update alarm or fault status, PD policy manager will process the events
- */
-static void bq2597x_update_status(struct bq2597x *bq)
+
+
+static void bq2597x_check_alarm_status(struct bq2597x *bq)
 {
 	int ret;
 	u8 flag = 0;
@@ -1865,8 +1863,6 @@ static void bq2597x_update_status(struct bq2597x *bq)
 	bool changed = false;
 
 	mutex_lock(&bq->data_lock);
-
-	
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_08, &flag);
 	if (!ret && (flag & BQ2597X_IBUS_UCP_FALL_FLAG_MASK))
 		pr_debug("UCP_FLAG =0x%02X\n", !!(flag & BQ2597X_IBUS_UCP_FALL_FLAG_MASK));
@@ -1903,6 +1899,22 @@ static void bq2597x_update_status(struct bq2597x *bq)
 	if (!ret && (stat & 0x02))
 		pr_err("Reg[0A]CONV_OCP = 0x%02X\n", stat);
 		
+	mutex_unlock(&bq->data_lock);
+	
+	if (changed)
+		power_supply_changed(&bq->fc2_psy);
+
+}
+
+static void bq2597x_check_fault_status(struct bq2597x *bq)
+{
+	int ret;
+	u8 flag = 0;
+	u8 stat = 0;
+	bool changed = false;
+
+	mutex_lock(&bq->data_lock);
+	
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_10, &stat);
 	if (!ret && stat)
 		pr_err("FAULT_STAT = 0x%02X\n", stat);
@@ -1930,8 +1942,8 @@ static void bq2597x_update_status(struct bq2597x *bq)
 	if (changed)
 		power_supply_changed(&bq->fc2_psy);
 
-}
 
+}
 
 
 static irqreturn_t bq2597x_charger_interrupt(int irq, void *dev_id)
@@ -1953,7 +1965,9 @@ static irqreturn_t bq2597x_charger_interrupt(int irq, void *dev_id)
 	bq->irq_waiting = false;
 
 	/* TODO */
-	bq2597x_update_status(bq);
+	bq2597x_check_alarm_status(bq);
+	bq2597x_check_fault_status(bq);
+
 #if 0
 	bq2597x_dump_reg(bq);
 #endif

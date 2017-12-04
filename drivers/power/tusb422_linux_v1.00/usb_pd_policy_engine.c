@@ -36,6 +36,7 @@
  *
  */
 
+#define pr_fmt(fmt)	"[PD-PE]: %s: " fmt, __func__
 #include "usb_pd_policy_engine.h"
 #include "tcpm.h"
 #include "tusb422.h"
@@ -3252,6 +3253,7 @@ static void pe_src_ready_entry(usb_pd_port_t *dev)
 
 static void pe_src_hard_reset_received_entry(usb_pd_port_t *dev)
 {
+	pr_err("Hardreset Received\n");
 	timer_start(&dev->timer, T_PS_HARD_RESET_MS, timeout_ps_hard_reset);
 	return;
 }
@@ -3897,6 +3899,8 @@ static void pe_snk_ready_entry(usb_pd_port_t *dev)
 static void pe_snk_hard_reset_entry(usb_pd_port_t *dev)
 {
 	dev->hard_reset_cnt++;
+	pr_err("snk tx hardreset,hard_reset_cnt=%d\n", dev->hard_reset_cnt);
+
 	tcpm_transmit(dev->port, NULL, TCPC_TX_HARD_RESET);
 
 	return;
