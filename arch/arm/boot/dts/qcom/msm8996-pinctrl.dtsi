@@ -864,11 +864,11 @@
 		};
 			bq27426_int_default: bq27426_int_default {
 				muex {
-					pins = "gpio1";
+					pins = "gpio0";
 					function = "gpio";
 				};
 				config {
-					pins = "gpio1";
+					pins = "gpio0";
 					drive-strength = <2>;
 					bias-pull-up;
 				};

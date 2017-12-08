@@ -867,7 +867,6 @@ static irqreturn_t qpnp_kpdpwr_resin_bark_irq(int irq, void *_pon)
 	return IRQ_HANDLED;
 }
 
-void bq2415x_cblpwr_changed(void);
 static irqreturn_t qpnp_cblpwr_irq(int irq, void *_pon)
 {
 	int rc;
@@ -876,8 +875,6 @@ static irqreturn_t qpnp_cblpwr_irq(int irq, void *_pon)
 	rc = qpnp_pon_input_dispatch(pon, PON_CBLPWR);
 	if (rc)
 		dev_err(&pon->spmi->dev, "Unable to send input event\n");
-
-	bq2415x_cblpwr_changed();
 
 	return IRQ_HANDLED;
 }
@@ -1190,7 +1187,6 @@ qpnp_pon_request_irqs(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 							cfg->state_irq);
 			return rc;
 		}
-		enable_irq_wake(cfg->state_irq);
 		break;
 	case PON_KPDPWR_RESIN:
 		if (cfg->use_bark) {
