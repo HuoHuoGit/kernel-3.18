@@ -107,6 +107,7 @@ enum bq_fg_subcmd {
 	FG_SUBCMD_CHEM_B		= 0x0031,
 	FG_SUBCMD_CHEM_C		= 0x0032,
 	FG_SUBCMD_SOFT_RESET	= 0x0042,
+	FG_SUBCMD_EXIT_CFGMODE	= 0x0043,
 };
 
 
@@ -764,6 +765,42 @@ static int fg_dm_post_access(struct bq_fg_chip *bq)
 	}
 }
 EXPORT_SYMBOL_GPL(fg_dm_post_access);
+
+static int fg_dm_enter_cfg_mode(struct bq_fg_chip *bq)
+{
+		return fg_dm_pre_access(bq);
+}
+
+static int fg_dm_exit_cfg_mode(struct bq_fg_chip *bq)
+{
+	int ret;
+	int i = 0;
+
+
+	ret = fg_write_word(bq, bq->regs[BQ_FG_REG_CTRL],
+						FG_SUBCMD_EXIT_CFGMODE);
+	if (ret < 0)
+		return ret;
+	
+	msleep(100);
+
+	while(i++ < CFG_UPDATE_POLLING_RETRY_LIMIT) {
+		ret = fg_check_cfg_update_mode(bq);
+		if (!ret && !bq->cfg_update_mode)
+			break;
+		msleep(100);
+	}
+	
+	if (i == CFG_UPDATE_POLLING_RETRY_LIMIT) {
+		pr_err("Failed to exit cfgupdate mode\n");
+		return -1;
+	} else {
+		return fg_seal(bq);
+	}
+}
+EXPORT_SYMBOL_GPL(fg_dm_exit_cfg_mode);
+
+
 
 #define	DM_ACCESS_BLOCK_DATA_CHKSUM	0x60
 #define	DM_ACCESS_BLOCK_DATA_CTRL	0x61
@@ -1745,6 +1782,45 @@ static struct attribute *fg_attributes[] = {
 static const struct attribute_group fg_attr_group = {
 	.attrs = fg_attributes,
 };
+
+
+
+static int fg_enable_sleep(struct bq_fg_chip *bq, bool enable)
+{
+
+	int ret;
+	u8 rd_buf[64];
+
+	memset(rd_buf, 0, 64);
+	mutex_lock(&bq->update_lock);
+	ret = fg_dm_enter_cfg_mode(bq);
+	if (ret) {
+		mutex_unlock(&bq->update_lock);
+		return ret;
+	}
+
+	ret = fg_dm_read_block(bq, 64, 0, rd_buf);	//OpConfig
+	if (ret) {
+		fg_dm_exit_cfg_mode(bq);
+		mutex_unlock(&bq->update_lock);
+		return ret;
+	}
+
+	if (enable)
+		rd_buf[1] |=0x20;	// set SLEEP bit
+	else
+		rd_buf[1] &=~0x20;	// clear SLEEP bit
+	
+	
+	ret = fg_dm_write_block(bq, 64, 0, rd_buf);
+	
+	fg_dm_exit_cfg_mode(bq);
+
+	mutex_unlock(&bq->update_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(fg_enable_sleep);
 
 static void fg_update_bqfs_workfunc(struct work_struct *work)
 {
