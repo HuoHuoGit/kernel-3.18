@@ -490,15 +490,15 @@ static int usb_pd_pm_flash2_charge(unsigned int port)
     static int ibus_limit;
 
     if (ibus_limit == 0)
-	ibus_limit = pm_state.ibus_lmt_curr * 110 / 100;
+	ibus_limit = pm_state.ibus_lmt_curr + 400;
 
     if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt - 50) {
 	if (ibus_lmt_change_timer++ > IBUS_CHANGE_TIMEOUT) {
 		ibus_lmt_change_timer = 0;
-		ibus_limit = pm_state.ibus_lmt_curr * 90 / 100;
+		ibus_limit = pm_state.ibus_lmt_curr - 400;
 	}
     } else if (pm_state.bq2597x.vbat_volt < sys_config.bat_volt_lp_lmt - 250) {
-	ibus_limit = pm_state.ibus_lmt_curr * 110 / 100;
+	ibus_limit = pm_state.ibus_lmt_curr + 400;
 	ibus_lmt_change_timer = 0;
     } else {
 	ibus_lmt_change_timer = 0;
