@@ -613,7 +613,7 @@ static int bq2415x_set_input_volt_limit(struct bq2415x *bq, int volt)
 
 	pr_debug("val:0x%02X\n", val);
 	
-	return bq2415x_update_bits(bq, BQ2415X_REG_06,
+	return bq2415x_update_bits(bq, BQ2415X_REG_05,
 				BQ2415X_VSREG_MASK, val);
 }
 
