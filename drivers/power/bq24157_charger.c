@@ -785,13 +785,13 @@ static const unsigned char * chg_state_str[] = {
 
 static const unsigned char * chg_fault_state_str[] = {
 	"Normal", "VBUS OVP", "Sleep mode", "Bad Adapter",
-	"Output ovp", "Thermal shutdown", "Timer fault",
+	"Battery ovp", "Thermal shutdown", "Timer fault",
 	"No battery"
 };
 
 static const unsigned char * boost_fault_state_str[] = {
 	"Normal", "VBUS OVP", "over load", "battery volt too low",
-	"Battery OVP","Thermal shutdown", "Timer fault","N/A"
+	"Output OVP","Thermal shutdown", "Timer fault","N/A"
 };
 
 static void bq2415x_dump_status(struct bq2415x *bq)
