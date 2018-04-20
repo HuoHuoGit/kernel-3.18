@@ -1848,6 +1848,9 @@ static void bq2415x_vbus_changed_workfunc(struct work_struct *work)
 	if (ret)
 		return;
 
+	if (bq->otg_enabled)
+		return;
+
 	if(!bq->power_good) {
 	    if(bq->usb_present) {
 			bq->usb_present = false;
