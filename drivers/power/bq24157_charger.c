@@ -138,6 +138,8 @@ struct bq2415x {
 	bool software_jeita_supported;
 	bool jeita_active;
 
+	bool low_chg;
+	
 	bool batt_hot;
 	bool batt_cold;
 	bool batt_warm;
@@ -359,6 +361,37 @@ static int bq2415x_enable_term(struct bq2415x *bq, bool enable)
 
 	return ret;
 }
+
+static int bq2415x_set_lowchg(struct bq2415x *bq, bool enable)
+{
+	u8 val;
+	int ret;
+
+	if (enable)
+		val = BQ2415X_LOW_CHG;
+	else
+		val = BQ2415X_LOW_CHG_NORMAL;
+
+	val <<= BQ2415X_LOW_CHG_SHIFT;
+
+	ret = bq2415x_update_bits(bq, BQ2415X_REG_05,
+				BQ2415X_LOW_CHG_MASK, val);
+
+	return ret;
+}
+
+static int bq2415x_get_lowchg(struct bq2415x *bq)
+{
+	u8 val;
+	int ret;
+	
+	ret = bq2415x_read_byte(bq, BQ2415X_REG_05, &val);
+	if (!ret) 
+		bq->low_chg = !!(val & BQ2415X_LOW_CHG_MASK);
+		
+	return ret;
+}
+
 
 int bq2415x_reset_chip(struct bq2415x *bq)
 {
@@ -1757,6 +1790,14 @@ static void bq2415x_charge_jeita_workfunc(struct work_struct *work)
 
 	bq2415x_check_jeita(bq);
 	bq2415x_dump_status(bq);
+
+	bq2415x_get_lowchg(bq);
+	if (bq->fault_status == 7 || bq->fault_status == 4 || bq->low_chg) {
+		bq2415x_init_device(bq);
+		bq2415x_update_charging_profile(bq);
+		pr_err("register is reset,init again,bq->fault_status=%d\n",bq->fault_status);
+	}
+
 	bq2415x_relax(&bq->bq2415x_ws, WAKEUP_SRC_JEITA);
 }
 
