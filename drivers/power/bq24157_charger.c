@@ -775,6 +775,8 @@ static int bq2415x_init_device(struct bq2415x *bq)
 		pr_err("Failed to %s termination:%d\n",
 			bq->enable_term ? "enable" : "disable", ret);
 
+	bq2415x_set_lowchg(bq, false);
+
 	ret = bq2415x_set_vbatlow_volt(bq, bq->batlow_mv);
 	if (ret < 0)
 		pr_err("Failed to set vbatlow volt to %d,rc=%d\n",
