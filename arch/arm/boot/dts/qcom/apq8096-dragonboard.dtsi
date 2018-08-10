@@ -618,11 +618,6 @@
 		bq2415x_otg_supply:bq2415x@6A {
 			compatible = "ti,bq24157";
 			reg = <0x6A>;
-			interrupt-parent = <&tlmm>;
-			interrupts = <124 2>;
-			pinctrl-names = "defaults";
-			pinctrl-0 = <&bq24157_int_default>;
-
 
 			regulator-name = "bq2415x_otg_vreg";
 			    

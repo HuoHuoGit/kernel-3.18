@@ -885,19 +885,6 @@
 					bias-pull-up;
 				};
 			};
-
-			bq24157_int_default: bq24157_int_default {
-				muex {
-					pins = "gpio124";
-					function = "gpio";
-				};
-				config {
-					pins = "gpio124";
-					drive-strength = <2>;
-					bias-pull-up;
-				};
-			};
-
 /*
 			tusb422_int_default: tusb422_int_default {
 				muex {
