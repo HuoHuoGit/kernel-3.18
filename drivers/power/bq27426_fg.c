@@ -1649,87 +1649,72 @@ static void create_debugfs_entry(struct bq_fg_chip *bq)
 	}	
 }
 
-static ssize_t fg_attr_show_Ra_table(struct device *dev,
+static ssize_t fg_attr_show_qmax_ratable(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct bq_fg_chip *bq = i2c_get_clientdata(client);
 
 	int ret;
-	u8 rd_buf[64];
-	u8 temp_buf[100];
-	int len, i, idx;
-	u8 *err_str[] = {
-		"Failed to enter configure mode",
-		"Failed to Read Ra Table",
-		"Failed to exit configure mode",
-	};
-
-	memset(buf, 0, 64);
-	mutex_lock(&bq->update_lock);
-	ret = fg_dm_pre_access(bq);
-	if (ret) {
-		sprintf(buf,"%s", err_str[0]);
-		mutex_unlock(&bq->update_lock);
-		return strlen(err_str[0]);
-	}
-
-	ret = fg_dm_read_block(bq, 89, 0, rd_buf);	//Ra Table
-	if (ret) {
-		sprintf(buf,"%s", err_str[1]);
-		fg_dm_post_access(bq);
-		mutex_unlock(&bq->update_lock);
-		return strlen(err_str[1]);
-	}
-
-	fg_dm_post_access(bq);
-
-	idx = 0;
-	for (i = 0; i < 30; i++) {
-		len = sprintf(temp_buf, "%02X ", rd_buf[i]);
-		memcpy(&buf[idx], temp_buf, len);
-		idx += len;
-	}
-	mutex_unlock(&bq->update_lock);
-	return idx;
-}
-
-static ssize_t fg_attr_show_Qmax(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct i2c_client *client = to_i2c_client(dev);
-	struct bq_fg_chip *bq = i2c_get_clientdata(client);
-
-	int ret;
-	u8 rd_buf[64];
+	u8 rd_buf[1024];
 	int len;
-	u8 *err_str[] = {
-		"Failed to enter configure mode",
-		"Failed to Qmax",
-	};
+	int idx = 0;
+	int i;
 
-	memset(buf, 0, 64);
 	mutex_lock(&bq->update_lock);
 	ret = fg_dm_pre_access(bq);
 	if (ret) {
-		sprintf(buf,"%s", err_str[0]);
 		mutex_unlock(&bq->update_lock);
-		return strlen(err_str[0]);
+		return 0;
 	}
 
 	ret = fg_dm_read_block(bq, 82, 0, rd_buf);	//Qmax, offset 0
 	if (ret) {
-		sprintf(buf,"%s", err_str[1]);
 		fg_dm_post_access(bq);
 		mutex_unlock(&bq->update_lock);
-		return strlen(err_str[1]);
+		return 0;
 	}
 	
-	len = sprintf(buf, "Qmax Cell 0 = %d\n", (rd_buf[0] << 8) | rd_buf[1]);
+	len = sprintf(&buf[idx], "Qmax Cell 0: %d\n", (rd_buf[0] << 8) | rd_buf[1]);
+	idx += len;
+	len = sprintf(&buf[idx], "Avg I Last Run: %d\n", (short)(rd_buf[25] << 8 | rd_buf[26]));
+	idx += len;
+	len = sprintf(&buf[idx], "Avg P Last Run:%d\n", (short)(rd_buf[27] << 8 | rd_buf[28]));
+	idx += len;
+	len = sprintf(&buf[idx], "Delta Voltage:%d\n", (rd_buf[29] << 8 | rd_buf[30]));
+	idx += len;
+
+	ret = fg_dm_read_block(bq, 89, 0, rd_buf);	//Ra Table
+	if (ret) {
+		fg_dm_post_access(bq);
+		mutex_unlock(&bq->update_lock);
+		return idx;
+	}
+
+	len = sprintf(&buf[idx], "Ra Table:\n");
+	idx += len;
+
+	for (i = 0; i < 15; i += 2) {
+		len = sprintf(&buf[idx], "%d ", rd_buf[i] << 8 | rd_buf[i+1]);
+		idx += len;
+	}
+
+
+	ret = fg_dm_read_block(bq, 109, 6, rd_buf);	//V at Chg Term
+	if (ret) {
+		fg_dm_post_access(bq);
+		mutex_unlock(&bq->update_lock);
+		return idx;
+	}
+
+	len = sprintf(&buf[idx], "V at Chg Term:%d\n", rd_buf[0] << 8 | rd_buf[1]);
+	idx += len;
+
 	fg_dm_post_access(bq);
 
 	mutex_unlock(&bq->update_lock);
-	return len;
+
+	return idx;
 }
 
 static ssize_t fg_attr_store_update(struct device *dev,
@@ -1766,14 +1751,12 @@ static ssize_t fg_attr_show_dmcode(struct device *dev,
 	
 
 
-static DEVICE_ATTR(RaTable, S_IRUGO, fg_attr_show_Ra_table, NULL);
-static DEVICE_ATTR(Qmax, S_IRUGO, fg_attr_show_Qmax, NULL);
+static DEVICE_ATTR(qmax_ratable, S_IRUGO, fg_attr_show_qmax_ratable, NULL);
 static DEVICE_ATTR(update, S_IWUSR, NULL, fg_attr_store_update);
 static DEVICE_ATTR(dmcode, S_IRUGO, fg_attr_show_dmcode, NULL);
 
 static struct attribute *fg_attributes[] = {
-	&dev_attr_RaTable.attr,
-	&dev_attr_Qmax.attr,
+	&dev_attr_qmax_ratable.attr,
 	&dev_attr_update.attr,
 	&dev_attr_dmcode.attr,
 	NULL,
