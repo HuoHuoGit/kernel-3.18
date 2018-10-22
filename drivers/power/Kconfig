@@ -390,6 +390,20 @@ config FUELGAUGE_BQ27426
 	help
 	  Say Y to enable support for the TI BQ27426 fuel gauge.
 
+config FUELGAUGE_BQ27542
+	tristate "TI BQ27542 fuel gauge driver"
+	depends on I2C
+	default y
+	help
+	  Say Y to enable support for the TI BQ27542 fuel gauge.
+
+config FUELGAUGE_BQ34Z100
+	tristate "TI BQ34Z100 fuel gauge driver"
+	depends on I2C
+	default y
+	help
+	  Say Y to enable support for the TI BQ27542 fuel gauge.
+
 
 config CHARGER_SMB347
 	tristate "Summit Microelectronics SMB347 Battery Charger"

@@ -554,6 +554,7 @@
 	};
 
 	i2c@7575000 {
+/*
 		bq27426@55 {
 			compatible = "ti,bq27426";
 			reg = <0x55>;
@@ -561,6 +562,19 @@
 			interrupts = <62 2>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&bq27426_int_default>;
+*/
+			/*vdd-supply = <&pm8937_l16>;*/
+/*			ti,batt-id-vref-uv = <1800000>;
+			ti,batt-id-rpullup-kohm = <68>;
+		};
+*/
+
+		bq34z100@55 {
+			compatible = "ti,bq34z100";
+			reg = <0x55>;
+			interrupt-parent = <&tlmm>;
+			interrupts = <62 2>;
+			pinctrl-names = "default";
 
 			/*vdd-supply = <&pm8937_l16>;*/
 			ti,batt-id-vref-uv = <1800000>;

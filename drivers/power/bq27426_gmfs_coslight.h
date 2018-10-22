@@ -14,7 +14,7 @@
 
 #include "bqfs_cmd_type.h"
 
-const bqfs_cmd_t bqfs_coslight[] = {
+static const bqfs_cmd_t bqfs_coslight[] = {
 	{
 		.cmd_type	= CMD_W,
 		.addr		= 0xAA,
