@@ -386,14 +386,14 @@ config CHARGER_BQ24157
 config FUELGAUGE_BQ27426
 	tristate "TI BQ27426 fuel gauge driver"
 	depends on I2C
-	default y
+	default n
 	help
 	  Say Y to enable support for the TI BQ27426 fuel gauge.
 
 config FUELGAUGE_BQ27542
 	tristate "TI BQ27542 fuel gauge driver"
 	depends on I2C
-	default y
+	default n
 	help
 	  Say Y to enable support for the TI BQ27542 fuel gauge.
 
