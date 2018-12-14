@@ -1220,7 +1220,7 @@ static int fg_check_update_necessary(struct bq_fg_chip *bq)
 static bool fg_update_bqfs_write_block(struct bq_fg_chip *bq, u8 reg, 
 				u8* buf, u8 len)
 {
-#define I2C_BLK_SIZE	30
+#define I2C_BLK_SIZE	32
 	int ret;
 	u8 wr_len = 0;
 
